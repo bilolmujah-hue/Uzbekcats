@@ -1,7 +1,7 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: api.py
-# TAVSIF: FastAPI Backend (Web App bilan ishlash uchun barcha API yo'llari)
+# TAVSIF: FastAPI Backend (Web App uchun to'liq mukammal API)
 # ==============================================================================
 
 import hmac
@@ -11,7 +11,7 @@ import os
 import urllib.parse
 from datetime import datetime, timedelta
 from typing import Optional, List
-from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, Form, status
+from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, Form, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -59,14 +59,15 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 # PYDANTIC MODELLARI (Ma'lumotlarni tekshirish uchun)
 # ==============================================================================
 
-class TelegramAuthData(BaseModel):
-    initData: str
+class TelegramAuthRequest(BaseModel):
+    init_data: str
+    user: dict
 
 
 class AdCreateRequest(BaseModel):
-    tariff: str  # web_only, channel_only, web_and_channel
+    tariff: str
     cat_count: int
-    photos: List[str]  # Rasm URL yoki file_id lari (Hozircha Base64 yoki URL deb qabul qilamiz)
+    photos: List[str]
     breed: str
     age: str
     gender: str
@@ -99,33 +100,37 @@ class UserbotVerifyCode(BaseModel):
     password: Optional[str] = None
 
 
+class AdminActionRequest(BaseModel):
+    telegram_id: int
+    amount: Optional[int] = None
+    reason: Optional[str] = None
+
+
+class AdminAddScoreRequest(BaseModel):
+    phone: str
+    score: int
+
+
 # ==============================================================================
-# XAVFSIZLIK VA AUTENTIFIKATSIYA (Telegram WebApp ni tekshirish)
+# XAVFSIZLIK VA AUTENTIFIKATSIYA
 # ==============================================================================
 
 def verify_telegram_webapp_data(init_data: str) -> dict:
-    """
-    Telegram Web App'dan kelgan ma'lumotlarni tekshiradi (HMAC-SHA256).
-    Bu foydalanuvchi haqiqatan ham Telegram'dan kelayotganini tasdiqlaydi.
-    """
+    """Telegram Web App'dan kelgan ma'lumotlarni HMAC-SHA256 orqali tekshiradi."""
     try:
         parsed_data = dict(urllib.parse.parse_qsl(init_data))
         if "hash" not in parsed_data:
             raise HTTPException(status_code=401, detail="Invalid initData: hash missing")
 
         received_hash = parsed_data.pop("hash")
-
-        # Ma'lumotlarni tartiblab, stringga aylantiramiz
         data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed_data.items()))
 
-        # Bot tokenidan foydalanib maxfiy kalit yasaymiz
         secret_key = hmac.new(
             b"WebAppData",
             BotConfig.BOT_TOKEN.encode(),
             hashlib.sha256
         ).digest()
 
-        # Tekshiramiz
         calculated_hash = hmac.new(
             secret_key,
             data_check_string.encode(),
@@ -135,7 +140,6 @@ def verify_telegram_webapp_data(init_data: str) -> dict:
         if calculated_hash != received_hash:
             raise HTTPException(status_code=401, detail="Invalid initData: hash mismatch")
 
-        # Foydalanuvchi ma'lumotlarini qaytaramiz
         user_data = json.loads(parsed_data.get("user", "{}"))
         return user_data
     except Exception as e:
@@ -144,7 +148,7 @@ def verify_telegram_webapp_data(init_data: str) -> dict:
 
 
 async def get_current_user(x_telegram_init_data: str = Header(None)):
-    """Header orqali kelgan foydalanuvchini aniqlaydi."""
+    """Header orqali kelgan foydalanuvchini aniqlaydi va bazadan qidiradi."""
     if not x_telegram_init_data:
         raise HTTPException(status_code=401, detail="Telegram ma'lumotlari topilmadi")
 
@@ -156,25 +160,48 @@ async def get_current_user(x_telegram_init_data: str = Header(None)):
 
     user = await db.get_user(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Foydalanuvchi bazadan topilmadi")
-
+        raise HTTPException(status_code=404, detail="Foydalanuvchi bazadan topilmadi. Iltimos botga /start bosing.")
     return user
 
 
 async def check_admin(current_user: dict = Depends(get_current_user)):
     """Faqat adminlarga ruxsat berish."""
-    if current_user['id'] not in BotConfig.ADMIN_IDS:
+    if current_user['id'] not in BotConfig.ADMIN_IDS and not current_user.get('is_admin'):
         raise HTTPException(status_code=403, detail="Siz admin emassiz!")
     return current_user
 
 
 # ==============================================================================
-# 1. FOYDALANUVCHI MA'LUMOTLARI
+# 1. AUTENTIFIKATSIYA VA FOYDALANUVCHI
 # ==============================================================================
+
+@app.post("/api/auth/telegram")
+async def auth_telegram(req: TelegramAuthRequest):
+    """Frontend ochilganda foydalanuvchini tekshirish va bazaga ulash."""
+    user = await db.get_user(req.user['id'])
+    if not user:
+        raise HTTPException(404, "Foydalanuvchi topilmadi. Botga kirib /start bosing.")
+
+    return {
+        "access_token": req.init_data,
+        "user": {
+            "telegram_id": user["id"],
+            "user_number": user["user_number"],
+            "first_name": user["full_name"].split()[0] if user["full_name"] else "",
+            "last_name": " ".join(user["full_name"].split()[1:]) if user["full_name"] and len(
+                user["full_name"].split()) > 1 else "",
+            "username": user["username"].replace("@", "") if user["username"] else None,
+            "phone": user["phone"],
+            "balance": user["balance"],
+            "score": user["score"],
+            "is_admin": user["id"] in BotConfig.ADMIN_IDS or user.get("is_admin", False)
+        }
+    }
+
 
 @app.get("/api/user/me")
 async def get_me(user: dict = Depends(get_current_user)):
-    """Profil sahifasi uchun foydalanuvchi ma'lumotlari."""
+    """Profil sahifasi uchun joriy foydalanuvchi ma'lumotlari."""
     return {
         "id": user["id"],
         "user_number": user["user_number"],
@@ -183,41 +210,31 @@ async def get_me(user: dict = Depends(get_current_user)):
         "phone": user["phone"],
         "balance": user["balance"],
         "score": user["score"],
-        "is_admin": user["id"] in BotConfig.ADMIN_IDS
+        "is_admin": user["id"] in BotConfig.ADMIN_IDS or user.get("is_admin", False)
     }
-
-
-@app.get("/api/tariffs")
-async def get_tariffs():
-    """Frontend uchun narxlar ro'yxati."""
-    return WebAppConfig.TARIFFS
-
-
-# ==============================================================================
-# 2. REKLAMALAR (ADS) BILAN ISHLASH
-# ==============================================================================
-
-@app.get("/api/ads")
-async def get_active_ads():
-    """Asosiy sahifa uchun barcha faol (Web) reklamalar."""
-    # Eski, muddati o'tgan reklamlarni tozalash
-    await db.cleanup_expired_web_ads()
-    ads = await db.get_active_web_ads()
-    return ads
 
 
 @app.get("/api/user/ads")
 async def get_my_ads(user: dict = Depends(get_current_user)):
-    """Foydalanuvchining o'z reklamalari."""
-    ads = await db.get_user_ads(user["id"])
-    return ads
+    """Foydalanuvchining o'z reklamalari ro'yxati."""
+    return await db.get_user_ads(user["id"])
+
+
+# ==============================================================================
+# 2. REKLAMALAR VA KONKURS
+# ==============================================================================
+
+@app.get("/api/ads")
+async def get_active_ads():
+    """Asosiy sahifa uchun faol (Web) reklamalar."""
+    await db.cleanup_expired_ads()  # Muddati o'tganlarni tozalash
+    return await db.get_active_web_ads()
 
 
 @app.post("/api/ads")
 async def create_ad(req: AdCreateRequest, user: dict = Depends(get_current_user)):
-    """Yangi reklama yaratish va balansdan pul yechish."""
-
-    # 1. Narxni hisoblash
+    """Web App orqali yangi reklama joylash va balansdan pul yechish."""
+    # Narxni hisoblash
     count_idx = min(req.cat_count, 5)
     price = 0
     if req.tariff == "web_only":
@@ -227,58 +244,56 @@ async def create_ad(req: AdCreateRequest, user: dict = Depends(get_current_user)
     elif req.tariff == "web_and_channel":
         price = Prices.TARIFF_BOTH[count_idx]
     else:
-        raise HTTPException(400, "Noto'g'ri tarif tanlandi")
+        raise HTTPException(400, "Noto'g'ri tarif")
 
-    # 2. Balansni tekshirish
+    # Balansni tekshirish va yechish
     if user["balance"] < price:
-        raise HTTPException(status_code=402, detail="Balansda mablag' yetarli emas! Iltimos, hisobni to'ldiring.")
+        raise HTTPException(status_code=402, detail="Balansda mablag' yetarli emas!")
 
-    # 3. Balansdan pul yechish (Atomic)
     try:
         await db.update_user_balance(user["id"], price, operation='subtract')
     except ValueError:
-        raise HTTPException(status_code=402, detail="Mablag' yechishda xatolik yuz berdi (balans yetarli emas).")
+        raise HTTPException(status_code=402, detail="Mablag' yechishda xatolik (balans yetarli emas).")
 
-    # 4. Bazaga saqlash
+    # Bazaga saqlash
     new_ad = await db.create_ad(
-        user_id=user["id"],
-        ad_type="sotish",
-        tariff=req.tariff,
-        photos=req.photos,
-        breed=req.breed,
-        age=req.age,
-        gender=req.gender,
-        health=req.health,
-        sterilization=req.sterilization,
-        address=req.address,
-        phone=req.phone,
-        price=req.price,
-        currency=req.currency,
-        ad_number=user["ad_count"] + 1
+        user_id=user["id"], ad_type="sotish", tariff=req.tariff, photos=req.photos,
+        breed=req.breed, age=req.age, gender=req.gender, health=req.health,
+        sterilization=req.sterilization, address=req.address, phone=req.phone,
+        price=req.price, currency=req.currency, ad_number=user["ad_count"] + 1
     )
-
-    # 5. Agar 2 yoki 3-tarif bo'lsa Texnik Adminga yuborish (kanalga chiqishi uchun)
-    if req.tariff in ["channel_only", "web_and_channel"]:
-        # Bu yerda botga xabar yuborish funksiyasini chaqirish mumkin.
-        # Hozircha DB da status 'pending' bo'lib turadi va Admin paneldan tasdiqlanadi.
-        pass
-
     return {"status": "success", "message": "Reklama yaratildi", "ad": new_ad}
 
 
+@app.get("/api/rating")
+async def get_rating():
+    """Frontend'dagi Podium (Top 10) uchun reyting."""
+    top_users = await db.get_top_10_users()
+    # Frontendga moslab formatlaymiz
+    formatted = []
+    for u in top_users:
+        formatted.append({
+            "id": u["id"],
+            "name": u["full_name"] or "Foydalanuvchi",
+            "score": u["score"],
+            "avatar": f"https://ui-avatars.com/api/?name={u['full_name'] or 'U'}&background=3B82F6&color=fff"
+        })
+    return formatted
+
+
 # ==============================================================================
-# 3. HISOB TO'LDIRISH (TOP UP)
+# 3. HISOB TO'LDIRISH (TOPUP) VA TO'LOVLAR
 # ==============================================================================
 
 @app.post("/api/topup")
 async def create_topup(req: TopUpRequest, user: dict = Depends(get_current_user)):
-    """Hisob to'ldirish uchun karta va taymer ma'lumotlarini berish."""
+    """Karta ma'lumotlarini olish va to'lov so'rovini yaratish."""
     if req.amount < 1000:
         raise HTTPException(400, "Minimal to'lov 1000 so'm")
 
     card = await db.get_active_card()
     if not card:
-        raise HTTPException(404, "Hozircha to'lov kartasi mavjud emas. Admin bilan bog'laning.")
+        raise HTTPException(404, "To'lov kartasi mavjud emas. Admin bilan bog'laning.")
 
     card_last4 = card['number'][-4:]
     payment_id = await db.create_payment_request(user["id"], req.amount, card["id"], card_last4)
@@ -298,33 +313,26 @@ async def upload_receipt(
         file: UploadFile = File(...),
         user: dict = Depends(get_current_user)
 ):
-    """To'lov chekini yuklash."""
-    # Faylni saqlash
-    file_ext = file.filename.split('.')[-1]
+    """To'lov chekini (rasmini) serverga yuklash."""
+    file_ext = file.filename.split('.')[-1] if file.filename else "jpg"
     file_name = f"receipt_{payment_id}_{user['id']}.{file_ext}"
     file_path = os.path.join(UPLOAD_DIR, file_name)
 
     with open(file_path, "wb") as f:
         f.write(await file.read())
 
-    # Bazaga yozish
     await db.attach_receipt(payment_id, file_name)
-
-    # Adminni xabardor qilish (Bot.py dagi funksiyaga murojaat qilsa ham bo'ladi)
-    # Hozircha API qaytaradi, bot polling qilib olsa ham bo'ladi.
-
     return {"status": "success", "message": "Chek yuklandi. Admin tasdiqlashini kuting."}
 
 
 # ==============================================================================
-# 4. ADMIN PANEL (Faqat Adminlar uchun)
+# 4. ADMIN PANEL (STATISTIKA VA BOSHQARUV)
 # ==============================================================================
 
 @app.get("/api/admin/stats")
 async def admin_stats(admin: dict = Depends(check_admin)):
-    """Admin uchun statistika (Tushum, Texnik admin ulushi va h.k.)."""
-    stats = await db.get_statistics()
-    return stats
+    """Admin uchun umumiy va batafsil statistika."""
+    return await db.get_statistics()
 
 
 @app.post("/api/admin/card")
@@ -338,23 +346,112 @@ async def add_card(req: AddCardRequest, admin: dict = Depends(check_admin)):
 
 @app.get("/api/admin/pending_ads")
 async def get_pending_ads(admin: dict = Depends(check_admin)):
-    """Kanaldagi tasdiqlanishi kutilayotgan reklamalar."""
-    ads = await db.get_pending_ads_for_tech_admin()
-    return ads
+    """Kanalga chiqishi kutilayotgan (Tasdiqlanmagan) reklamalar."""
+    return await db.get_pending_ads()
 
 
-@app.post("/api/admin/approve_ad/{ad_id}")
+@app.post("/api/admin/ads/approve/{ad_id}")
 async def approve_ad(ad_id: int, admin: dict = Depends(check_admin)):
-    """Reklamani tasdiqlash (Bot orqali kanalga post qilinadi)."""
+    """Reklamani tasdiqlash."""
     await db.update_ad_status(ad_id, "approved")
     return {"status": "success"}
 
 
+@app.post("/api/admin/ads/reject/{ad_id}")
+async def reject_ad(ad_id: int, admin: dict = Depends(check_admin)):
+    """Reklamani rad etish."""
+    await db.update_ad_status(ad_id, "rejected")
+    return {"status": "success"}
+
+
+@app.post("/api/admin/bot/toggle")
+async def toggle_bot(admin: dict = Depends(check_admin)):
+    """Botni yoqish yoki o'chirish."""
+    current = await db.get_setting("bot_enabled", "1")
+    new_val = "0" if current == "1" else "1"
+    await db.set_setting("bot_enabled", new_val)
+    return {"status": "success", "bot_enabled": new_val == "1"}
+
+
 # ==============================================================================
-# 5. USERBOT BOSHQARUVI (Faqat Web App orqali)
+# 5. ADMIN - FOYDALANUVCHILARNI BOSHQARISH
 # ==============================================================================
 
-# Userbot login jarayonida vaqtinchalik kodni saqlash uchun lug'at
+@app.get("/api/admin/users")
+async def get_users(admin: dict = Depends(check_admin)):
+    """Barcha foydalanuvchilar ro'yxati."""
+    async with db.pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM users ORDER BY registered_at DESC")
+        return [dict(r) for r in rows]
+
+
+@app.get("/api/admin/user/{telegram_id}")
+async def get_user_detail(telegram_id: int, admin: dict = Depends(check_admin)):
+    """Bitta foydalanuvchi haqida to'liq ma'lumot (Detal statistika)."""
+    user = await db.get_detailed_user_stats(telegram_id)
+    if not user:
+        raise HTTPException(404, "Foydalanuvchi topilmadi")
+    return user
+
+
+@app.post("/api/admin/user/block")
+async def block_user(req: AdminActionRequest, admin: dict = Depends(check_admin)):
+    """Foydalanuvchini bloklash."""
+    await db.block_user(req.telegram_id)
+    return {"status": "success"}
+
+
+@app.post("/api/admin/user/unblock")
+async def unblock_user(req: AdminActionRequest, admin: dict = Depends(check_admin)):
+    """Foydalanuvchini blokdan chiqarish."""
+    await db.unblock_user(req.telegram_id)
+    return {"status": "success"}
+
+
+@app.post("/api/admin/user/balance")
+async def add_balance(req: AdminActionRequest, admin: dict = Depends(check_admin)):
+    """Admin tomonidan qo'lda balans qo'shish yoki ayirish."""
+    if not req.amount:
+        raise HTTPException(400, "Summani kiriting")
+    op = 'add' if req.amount > 0 else 'subtract'
+    try:
+        new_bal = await db.update_user_balance(req.telegram_id, abs(req.amount), op)
+        return {"status": "success", "new_balance": new_bal}
+    except ValueError:
+        raise HTTPException(400, "Balans yetarli emas yoki xatolik.")
+
+
+@app.post("/api/admin/user/add-score")
+async def add_score(req: AdminAddScoreRequest, admin: dict = Depends(check_admin)):
+    """Telefon raqam orqali foydalanuvchiga ball qo'shish."""
+    success = await db.add_score_by_phone_batch(req.phone, req.score)
+    if success:
+        return {"status": "success", "message": "Ball qo'shildi"}
+    raise HTTPException(404, "Bunday telefon raqamli foydalanuvchi topilmadi.")
+
+
+# ==============================================================================
+# 6. ADMIN - KONKURS VA REFERRAL QIDIRUVI
+# ==============================================================================
+
+@app.get("/api/admin/participants")
+async def get_participants(admin: dict = Depends(check_admin)):
+    """Konkurs ishtirokchilari (15+ ball)."""
+    return await db.get_top_participants(min_score=15)
+
+
+@app.get("/api/admin/referrals/{telegram_id}")
+async def get_referrals(telegram_id: int, admin: dict = Depends(check_admin)):
+    """Foydalanuvchi kimlarni taklif qilgani (yoki kim taklif qilgani)."""
+    refs = await db.get_referrals_by_user(telegram_id)
+    referrer = await db.get_referrer_of_user(telegram_id)
+    return {"referrals": refs, "referrer": referrer}
+
+
+# ==============================================================================
+# 7. USERBOT BOSHQARUVI (Faqat Web App orqali)
+# ==============================================================================
+
 userbot_temp_sessions = {}
 
 
@@ -364,15 +461,12 @@ async def userbot_send_code(req: UserbotRequestCode, admin: dict = Depends(check
     try:
         client = TelegramClient(StringSession(), api_id=6, api_hash="eb06d4abfb49dc3eeb1aeb98ae0f581e")
         await client.connect()
-
         sent_code = await client.send_code_request(req.phone)
 
-        # Sessiyani vaqtincha saqlaymiz
         userbot_temp_sessions[req.phone] = {
             "client": client,
             "phone_code_hash": sent_code.phone_code_hash
         }
-
         return {"status": "success", "message": "Kod yuborildi"}
     except Exception as e:
         raise HTTPException(400, f"Xatolik: {str(e)}")
@@ -391,19 +485,16 @@ async def userbot_verify_code(req: UserbotVerifyCode, admin: dict = Depends(chec
     try:
         await client.sign_in(req.phone, req.code, phone_code_hash=phone_code_hash)
     except SessionPasswordNeededError:
-        # Agar 2FA parol bo'lsa
         if not req.password:
             raise HTTPException(401, "Ikkinchi bosqich paroli (2FA) kerak")
         await client.sign_in(password=req.password)
     except Exception as e:
         raise HTTPException(400, f"Kod xato: {str(e)}")
 
-    # Sessiyani saqlash
     session_string = client.session.save()
 
-    # Bazaga yozish
     async with db.pool.acquire() as conn:
-        await conn.execute("UPDATE userbot_sessions SET is_active = FALSE")  # Eskilarni o'chirish
+        await conn.execute("UPDATE userbot_sessions SET is_active = FALSE")
         await conn.execute(
             "INSERT INTO userbot_sessions (phone, session_string, is_active) VALUES ($1, $2, TRUE)",
             req.phone, session_string
@@ -411,12 +502,11 @@ async def userbot_verify_code(req: UserbotVerifyCode, admin: dict = Depends(chec
 
     await client.disconnect()
     del userbot_temp_sessions[req.phone]
-
     return {"status": "success", "message": "Userbot muvaffaqiyatli qo'shildi"}
 
 
 # ==============================================================================
-# ISHGA TUSHIRISH
+# ISHGA TUSHIRISH (STARTUP & SHUTDOWN)
 # ==============================================================================
 
 @app.on_event("startup")
