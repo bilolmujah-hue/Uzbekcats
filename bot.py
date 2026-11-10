@@ -34,7 +34,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # =====================================================================
-# BOT VA DISPATCHER SOZLAMALARI (Aiogram 3.7+ standarti)
+# BOT VA DISPATCHER SOZLAMALARI
 # =====================================================================
 bot = Bot(
     token=BotConfig.BOT_TOKEN,
@@ -47,7 +47,7 @@ dp.include_router(router)
 userbot_client: TelegramClient = None
 
 # =====================================================================
-# FSM HOLATLARI (State Machine)
+# FSM HOLATLARI
 # =====================================================================
 class RegStates(StatesGroup):
     waiting_phone = State()
@@ -308,12 +308,13 @@ async def menu_about(call: CallbackQuery):
 
 @router.callback_query(F.data == "menu_admin")
 async def menu_admin(call: CallbackQuery):
+    # XATO TUZATILDI: pastki chiziqchalar (_) escape qilindi
     text = (
         "👤 *Admin bilan bog'lanish*\n\n"
         "Savollar, takliflar va shikoyatlar uchun quyidagi adminlarga murojaat qiling:\n\n"
-        "👨‍💻 Texnik Admin: @It_project_2026\n"
+        "👨‍💻 Texnik Admin: @It\\_project\\_2026\n"
         "📞 Telefon: +998900512621\n\n"
-        "👨‍💼 Bosh Admin: @zayd_catlover\n"
+        "👨‍💼 Bosh Admin: @zayd\\_catlover\n"
         "📞 Telefon: +998934938181"
     )
     await call.message.edit_text(text, reply_markup=get_back_kb())
@@ -323,7 +324,6 @@ async def menu_konkurs(call: CallbackQuery):
     user_id = call.from_user.id
     user = await db.get_user(user_id)
     
-    # Referal link yasash
     ref_link = f"https://t.me/{BotConfig.BOT_USERNAME.replace('@', '')}?start=REF{user_id}"
     
     text = (
@@ -351,7 +351,9 @@ async def konkurs_rating(call: CallbackQuery):
         for i, u in enumerate(top_users):
             medal = "🥇" if i==0 else "🥈" if i==1 else "🥉" if i==2 else "👤"
             name = u['full_name'] if u['full_name'] else "Foydalanuvchi"
-            text += f"{medal} {i+1}. {name} — *{u['score']} ball*\n"
+            # XATO BO'LMASLIGI UCHUN matnlarni escape qilamiz
+            safe_name = name.replace('_', '\\_').replace('*', '\\*').replace('`', '\\`')
+            text += f"{medal} {i+1}. {safe_name} — *{u['score']} ball*\n"
             
     await call.message.edit_text(text, reply_markup=get_back_kb("menu_konkurs"))
 
@@ -372,8 +374,11 @@ async def menu_my_orders(call: CallbackQuery):
                 "sold": "💰 Sotilgan"
             }
             st = status_map.get(ad['status'], ad['status'])
-            text += f"🐱 *{ad['breed']}* | {st}\n"
-            text += f"📅 {ad['created_at'].strftime('%d.%m.%Y')}\n\n"
+            breed = ad['breed'].replace('_', '\\_').replace('*', '\\*').replace('`', '\\`')
+            date_str = ad['created_at'].strftime('%d.%m.%Y')
+            
+            text += f"🐱 *{breed}* | {st}\n"
+            text += f"📅 {date_str}\n\n"
             
     await call.message.edit_text(text, reply_markup=get_back_kb())
 
@@ -424,7 +429,6 @@ async def receive_photo(message: Message, state: FSMContext):
     photos.append(file_id)
     await state.update_data(photos=photos)
     
-    # Har safar rasm yuklaganda "Davom etish" tugmasini ko'rsatamiz
     await message.answer(f"✅ {len(photos)}-rasm qabul qilindi. Yana yuborishingiz yoki davom etishingiz mumkin.", reply_markup=get_continue_kb())
 
 @router.message(AdStates.waiting_media, F.video)
@@ -597,7 +601,7 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     await state.clear()
 
 # =====================================================================
-# 5. ADMIN PANEL (TO'LIQ MUKAMMAL)
+# 5. ADMIN PANEL
 # =====================================================================
 @router.callback_query(F.data == "admin_panel")
 async def admin_panel(call: CallbackQuery):
