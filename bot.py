@@ -15,7 +15,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InputMediaPhoto, FSInputFile, InputFile
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InputMediaPhoto
 )
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.client.default import DefaultBotProperties
@@ -25,7 +25,7 @@ from aiogram.enums import ParseMode
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
-# O'zimizning fayllar
+# O'zimizning fayllar (config va db mavjud deb hisoblaymiz)
 from config import BotConfig, Settings, Prices, DataLists, Texts, UserbotConfig
 from db import db
 
@@ -34,7 +34,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # =====================================================================
-# BOT VA DISPATCHER SOZLAMALARI (Aiogram 3.7+ uchun to'g'rilangan)
+# BOT VA DISPATCHER SOZLAMALARI (Aiogram 3.7+ standarti)
 # =====================================================================
 bot = Bot(
     token=BotConfig.BOT_TOKEN,
@@ -49,7 +49,7 @@ userbot_client: TelegramClient = None
 
 
 # =====================================================================
-# FSM HOLATLARI (State Machine)
+# FSM HOLATLARI (State Machine) - HAMMASI TO'LIQ QO'SHILDI
 # =====================================================================
 class RegStates(StatesGroup):
     waiting_phone = State()
@@ -58,7 +58,6 @@ class RegStates(StatesGroup):
 class AdStates(StatesGroup):
     choosing_cat_count = State()
     choosing_tariff = State()
-
     choosing_media_type = State()
     waiting_media = State()
     choosing_breed = State()
@@ -78,9 +77,6 @@ class AdStates(StatesGroup):
     yordam_phone = State()
     yordam_preview = State()
 
-    topup_amount = State()
-    topup_receipt = State()
-
 
 class AdminStates(StatesGroup):
     add_card_number = State()
@@ -92,6 +88,8 @@ class AdminStates(StatesGroup):
     set_konkurs_text = State()
     set_mukofot_media = State()
     set_mukofot_text = State()
+    topup_amount = State()  # <--- QO'SHILDI (Xato tuzatildi)
+    topup_receipt = State()  # <--- QO'SHILDI (Xato tuzatildi)
 
 
 # =====================================================================
@@ -258,7 +256,6 @@ def get_channel_post_kb():
 # =====================================================================
 # USERBOT LOGIKASI (CardXabarBot ni tinglash)
 # =====================================================================
-
 async def start_userbot(session_string: str):
     global userbot_client
     try:
@@ -297,7 +294,6 @@ async def start_userbot(session_string: str):
 # =====================================================================
 # 1. MIDDLEWARE VA START
 # =====================================================================
-
 @dp.message.middleware()
 async def check_user_middleware(handler, event: Message, data: dict):
     user_id = event.from_user.id
@@ -391,7 +387,6 @@ async def process_phone(message: Message, state: FSMContext):
 # =====================================================================
 # 2. ASOSIY MENYU VA NAVIGATSIYA
 # =====================================================================
-
 @router.callback_query(F.data == "menu_back_to_main")
 async def back_to_main(call: CallbackQuery):
     user_id = call.from_user.id
@@ -438,7 +433,6 @@ async def show_prices(call: CallbackQuery):
 # =====================================================================
 # 3. REKLAMA BERISH (SOTISH, HADIYA, VYAZKA)
 # =====================================================================
-
 @router.callback_query(F.data.startswith("adtype_"))
 async def choose_ad_type(call: CallbackQuery, state: FSMContext):
     ad_type = call.data.replace("adtype_", "")
@@ -788,13 +782,12 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
 
 
 # =====================================================================
-# 4. TO'LOV (HISOB TO'LDIRISH) TIZIMI
+# 4. TO'LOV (HISOB TO'LDIRISH) TIZIMI (YANGI STATE BILAN)
 # =====================================================================
-
 @router.callback_query(F.data == "menu_topup")
 async def start_topup(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text(Texts.TOPUP_ASK_AMOUNT)
-    await state.set_state(AdminStates.topup_amount)
+    await state.set_state(AdminStates.topup_amount)  # TO'G'RILANDI
 
 
 @router.message(AdminStates.topup_amount)
@@ -821,12 +814,7 @@ async def process_topup_amount(message: Message, state: FSMContext):
         minutes=Settings.TOPUP_TIMER_MINUTES
     )
     await message.answer(text)
-
-    await asyncio.sleep(Settings.TOPUP_TIMER_MINUTES * 60)
-
-    await message.answer(
-        "⏳ To'lov vaqti tugadi. Agar pul o'tkazgan bo'lsangiz, chekni yuboring yoki qaytadan urinib ko'ring.")
-    await state.clear()
+    await state.set_state(AdminStates.topup_receipt)  # TO'G'RILANDI
 
 
 @router.message(F.photo, AdminStates.topup_receipt)
@@ -845,7 +833,6 @@ async def process_receipt(message: Message, state: FSMContext):
 # =====================================================================
 # 5. ADMIN VA TEXNIK ADMIN PANELLARI
 # =====================================================================
-
 @router.callback_query(F.data == "admin_panel")
 async def admin_panel(call: CallbackQuery):
     if call.from_user.id not in BotConfig.ADMIN_IDS: return
@@ -895,23 +882,21 @@ async def process_card_holder(message: Message, state: FSMContext):
 # =====================================================================
 # 6. TEXNIK ADMIN - REKLAMALARNI TASDIQLASH VA KANALGA POST QILISH
 # =====================================================================
-
 @router.callback_query(F.data.startswith("admin_approve_ad_"))
 async def tech_admin_approve(call: CallbackQuery):
     if call.from_user.id != BotConfig.TECH_ADMIN_ID: return
 
     ad_id = int(call.data.split("_")[3])
 
-    # Bazadan reklamani olish (tarifni tekshirish uchun)
-    # Hozircha soddalik uchun to'g'ridan-to'g'ri statusni yangilaymiz,
-    # lekin aslida bazadan ad ma'lumotlarini olib kanalga post qilish funksiyasini chaqirish kerak.
-
     await db.update_ad_status(ad_id, "approved")
 
-    # Reklamani kanalga post qilish
-    ad_data = await db.get_ad_by_id(ad_id)  # db.py da bu funksiya bo'lishi kerak
+    # Bazadan reklama ma'lumotlarini olish (db.py da get_ad_by_id funksiyasi bo'lishi shart)
+    # Agar db.py da bo'lmasa, to'g'ridan-to'g'ri SQL query ishlatamiz:
+    async with db.pool.acquire() as conn:
+        ad_data = await conn.fetchrow("SELECT * FROM ads WHERE id = $1", ad_id)
+
     if ad_data:
-        await post_to_channel_with_button(ad_data)
+        await post_to_channel_with_button(dict(ad_data))
 
     await call.message.edit_caption(caption=call.message.caption + "\n\n✅ TASDIQLANDI")
     await call.answer("Tasdiqlandi va kanalga yuborildi!")
@@ -919,13 +904,22 @@ async def tech_admin_approve(call: CallbackQuery):
 
 async def post_to_channel_with_button(ad):
     """Kanalga post yuborish va tagiga 'Hadiya Kanal' tugmasini qo'shish."""
-    caption = build_caption(ad)
+    # Caption yasash (Soddalashtirilgan)
+    caption = f"🐱 Zot: {ad['breed']}\n📍 Manzil: {ad['address']}\n📞 Tel: {ad['phone']}\n💰 Narx: {ad['price']} {ad['currency']}"
+
+    # Rasm massivini olish (JSONB dan list ga o'tkazish)
+    import json
     photos = ad.get('photos', [])
+    if isinstance(photos, str):
+        try:
+            photos = json.loads(photos)
+        except:
+            photos = []
+
     kb = get_channel_post_kb()  # Hadiya kanal tugmasi
 
     try:
         if len(photos) == 1:
-            # Bitta rasm bo'lsa
             await bot.send_photo(
                 chat_id=BotConfig.CHANNEL_ID,
                 photo=photos[0],
@@ -933,19 +927,13 @@ async def post_to_channel_with_button(ad):
                 reply_markup=kb
             )
         elif len(photos) > 1:
-            # Bir nechta rasm bo'lsa (Albom).
-            # Diqqat: Telegram albomning tagiga inline tugma qo'yishga ruxsat bermaydi.
-            # Shuning uchun birinchi rasmni tugma bilan, qolganlarini albom qilib yuboramiz.
-            # Yoki eng oxirida alohida xabar bilan tugmani yuboramiz.
-            # Eng yaxshi usul: Albomni yuborib, ostidan tugmali xabar yuborish.
-
             media = [InputMediaPhoto(media=p, caption=caption if i == 0 else None) for i, p in enumerate(photos)]
             await bot.send_media_group(chat_id=BotConfig.CHANNEL_ID, media=media)
 
-            # Albom ostidan tugma chiqarish uchun alohida xabar
+            # Telegram albom ostiga tugma qo'ymaydi, shuning uchun alohida xabar yuboramiz
             await bot.send_message(
                 chat_id=BotConfig.CHANNEL_ID,
-                text="👇 Qo'shimcha ma'lumotlar",
+                text="👇 Batafsil ma'lumot uchun",
                 reply_markup=kb
             )
         else:
@@ -955,15 +943,9 @@ async def post_to_channel_with_button(ad):
         logger.error(f"Kanalga post yuborishda xatolik: {e}")
 
 
-def build_caption(ad):
-    # Sening caption yasash funksiyang
-    return f"🐱 Zot: {ad['breed']}\n📍 Manzil: {ad['address']}\n📞 Tel: {ad['phone']}\n💰 Narx: {ad['price']} {ad['currency']}"
-
-
 # =====================================================================
 # 7. GURUH MODERATSIYASI (BANNED WORDS)
 # =====================================================================
-
 @dp.message(F.chat.type.in_({"group", "supergroup"}))
 async def group_moderator(message: Message):
     if not message.text and not message.caption: return
@@ -990,7 +972,6 @@ async def group_moderator(message: Message):
 # =====================================================================
 # ISHGA TUSHIRISH (MAIN)
 # =====================================================================
-
 async def main():
     logger.info("🚀 Bot ishga tushmoqda...")
 
