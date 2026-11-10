@@ -1,0 +1,1860 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>UzbekCats | Premium Platforma</title>
+
+    <!-- =====================================================================
+         TELEGRAM WEB APP SDK
+         ===================================================================== -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- =====================================================================
+         GOOGLE FONTS
+         ===================================================================== -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- =====================================================================
+         FEATHER ICONS
+         ===================================================================== -->
+    <script src="https://unpkg.com/feather-icons"></script>
+
+    <style>
+        /* =================================================================
+           1. PREMIUM GLOBAL VARIABLES & RESET
+           ================================================================= */
+        :root {
+            /* Dark Mode (Default) */
+            --bg-base: #0A0D14;
+            --bg-surface: #151A23;
+            --bg-elevated: #1E2532;
+            --bg-glass: rgba(21, 26, 35, 0.75);
+
+            /* Text Colors */
+            --text-primary: #FFFFFF;
+            --text-secondary: #94A3B8;
+            --text-inverse: #0A0D14;
+
+            /* Brand Colors */
+            --brand-primary: #3B82F6;
+            --brand-secondary: #8B5CF6;
+            --brand-gradient: linear-gradient(135deg, #3B82F6, #8B5CF6);
+
+            /* Status Colors */
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+
+            /* Borders */
+            --border-light: rgba(255, 255, 255, 0.07);
+            --border-focus: rgba(59, 130, 246, 0.5);
+
+            /* Shadows */
+            --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.3);
+            --shadow-glow: 0 0 30px rgba(59, 130, 246, 0.2);
+
+            /* Radii */
+            --radius-sm: 12px;
+            --radius-md: 18px;
+            --radius-lg: 24px;
+            --radius-xl: 32px;
+
+            /* Layout */
+            --nav-height: 80px;
+            --font-main: 'Plus Jakarta Sans', sans-serif;
+            --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        [data-theme="light"] {
+            /* Light Mode */
+            --bg-base: #F1F5F9;
+            --bg-surface: #FFFFFF;
+            --bg-elevated: #F8FAFC;
+            --bg-glass: rgba(255, 255, 255, 0.85);
+
+            --text-primary: #0F172A;
+            --text-secondary: #64748B;
+            --text-inverse: #FFFFFF;
+
+            --border-light: rgba(0, 0, 0, 0.06);
+
+            --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.08);
+            --shadow-glow: 0 0 30px rgba(59, 130, 246, 0.15);
+        }
+
+        /* =================================================================
+           2. GLOBAL RESET
+           ================================================================= */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            transition: background-color var(--transition), color var(--transition);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            line-height: 1.5;
+        }
+
+        button, input, textarea {
+            font-family: inherit;
+            font-size: inherit;
+            color: inherit;
+        }
+
+        button {
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+
+        img {
+            display: block;
+            max-width: 100%;
+        }
+
+        /* =================================================================
+           3. ANIMATIONS (KEYFRAMES)
+           ================================================================= */
+
+        @keyframes splashScale {
+            0% {
+                transform: scale(0.2);
+                opacity: 0;
+                filter: blur(20px);
+            }
+            50% {
+                transform: scale(1.1);
+                opacity: 1;
+                filter: blur(0);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+                filter: blur(0);
+            }
+        }
+
+        @keyframes splashText {
+            0% {
+                letter-spacing: -20px;
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            100% {
+                letter-spacing: 2px;
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes glowPulse {
+            0% {
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+            }
+            50% {
+                box-shadow: 0 0 60px rgba(59, 130, 246, 0.6);
+            }
+            100% {
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+            }
+        }
+
+        @keyframes fadeOutSplash {
+            0% {
+                opacity: 1;
+                visibility: visible;
+            }
+            100% {
+                opacity: 0;
+                visibility: hidden;
+            }
+        }
+
+        @keyframes slideUpFade {
+            0% {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: -1000px 0;
+            }
+            100% {
+                background-position: 1000px 0;
+            }
+        }
+
+        @keyframes pulseFab {
+            0% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6);
+            }
+            70% {
+                box-shadow: 0 0 0 20px rgba(59, 130, 246, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+            }
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* =================================================================
+           4. SPLASH SCREEN
+           ================================================================= */
+        #splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--bg-base);
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.8s ease, visibility 0.8s;
+        }
+
+        .splash-logo {
+            width: 140px;
+            height: 140px;
+            border-radius: 45px;
+            background: var(--brand-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 70px;
+            animation: splashScale 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards, glowPulse 2s infinite alternate;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .splash-title {
+            margin-top: 40px;
+            font-size: 38px;
+            font-weight: 800;
+            color: var(--text-primary);
+            animation: splashText 1s ease forwards;
+            background: linear-gradient(to right, #ffffff, var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .splash-subtitle {
+            margin-top: 12px;
+            font-size: 15px;
+            color: var(--text-secondary);
+            letter-spacing: 1px;
+            opacity: 0;
+            animation: slideUpFade 1s ease 0.8s forwards;
+        }
+
+        .splash-loader {
+            margin-top: 50px;
+            width: 35px;
+            height: 35px;
+            border: 3px solid rgba(255, 255, 255, 0.05);
+            border-top-color: var(--brand-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            opacity: 0;
+            animation: slideUpFade 0.5s ease 1s forwards, spin 1s linear infinite;
+        }
+
+        /* =================================================================
+           5. APP CONTAINER & HEADER
+           ================================================================= */
+        .app-container {
+            display: none;
+            min-height: 100vh;
+            padding-bottom: calc(var(--nav-height) + 30px);
+        }
+
+        .app-container.loaded {
+            display: block;
+            animation: slideUpFade 0.6s ease forwards;
+        }
+
+        .app-header {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            z-index: 100;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--brand-primary);
+            background-color: var(--bg-surface);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .header-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-name {
+            font-size: 16px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .header-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .icon-btn {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-light);
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .icon-btn:active {
+            transform: scale(0.9);
+        }
+
+        /* =================================================================
+           6. BOTTOM NAVIGATION
+           ================================================================= */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: var(--nav-height);
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 700;
+            transition: var(--transition);
+            width: 65px;
+        }
+
+        .nav-item.active {
+            color: var(--brand-primary);
+        }
+
+        .nav-icon {
+            width: 44px;
+            height: 34px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .nav-item.active .nav-icon {
+            background-color: rgba(59, 130, 246, 0.12);
+        }
+
+        .nav-icon svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .nav-fab {
+            width: 60px;
+            height: 60px;
+            background: var(--brand-gradient);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.5);
+            border: 4px solid var(--bg-base);
+            transform: translateY(-20px);
+            animation: pulseFab 2s infinite;
+            transition: var(--transition);
+        }
+
+        .nav-fab:active {
+            transform: translateY(-20px) scale(0.9);
+        }
+
+        .nav-fab svg {
+            width: 30px;
+            height: 30px;
+        }
+
+        /* =================================================================
+           7. PAGES & COMPONENTS
+           ================================================================= */
+        .page {
+            display: none;
+            padding: 20px;
+        }
+
+        .page.active {
+            display: block;
+            animation: slideUpFade 0.4s ease;
+        }
+
+        .card {
+            background-color: var(--bg-surface);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-light);
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-gradient {
+            background: linear-gradient(145deg, var(--bg-surface), var(--bg-elevated));
+        }
+
+        .balance-title {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .balance-value {
+            font-size: 34px;
+            font-weight: 800;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            margin-bottom: 20px;
+        }
+
+        .currency {
+            font-size: 16px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .btn {
+            padding: 14px 20px;
+            border-radius: var(--radius-md);
+            font-size: 15px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: var(--transition);
+            width: 100%;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn-primary {
+            background-color: var(--brand-primary);
+            color: white;
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid var(--border-light);
+            color: var(--text-primary);
+        }
+
+        .search-box {
+            position: relative;
+            margin-bottom: 25px;
+        }
+
+        .search-box input {
+            width: 100%;
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-light);
+            padding: 16px 16px 16px 52px;
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 15px;
+            transition: var(--transition);
+        }
+
+        .search-box input:focus {
+            border-color: var(--brand-primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            margin-bottom: 20px;
+        }
+
+        .tabs::-webkit-scrollbar {
+            display: none;
+        }
+
+        .tab {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-light);
+            color: var(--text-secondary);
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            white-space: nowrap;
+            transition: var(--transition);
+        }
+
+        .tab.active {
+            background-color: var(--brand-primary);
+            color: white;
+            border-color: var(--brand-primary);
+        }
+
+        /* =================================================================
+           8. DASHBOARD (ADS)
+           ================================================================= */
+        .ads-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+        }
+
+        .ad-card {
+            background-color: var(--bg-surface);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            border: 1px solid var(--border-light);
+            transition: var(--transition);
+            position: relative;
+        }
+
+        .ad-card:active {
+            transform: scale(0.97);
+        }
+
+        .ad-img-wrap {
+            position: relative;
+            aspect-ratio: 1/1;
+            background-color: var(--bg-elevated);
+        }
+
+        .ad-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .ad-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            color: white;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 8px;
+        }
+
+        .ad-content {
+            padding: 12px;
+        }
+
+        .ad-title {
+            font-size: 14px;
+            font-weight: 800;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 5px;
+        }
+
+        .ad-loc {
+            font-size: 11px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-bottom: 10px;
+        }
+
+        .ad-price {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--brand-primary);
+        }
+
+        /* =================================================================
+           9. RATING
+           ================================================================= */
+        .rating-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .rating-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            background-color: var(--bg-surface);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-light);
+        }
+
+        .rating-pos {
+            width: 30px;
+            font-weight: 800;
+            font-size: 18px;
+            color: var(--text-secondary);
+        }
+
+        .rating-pos.top-1 { color: #FFD700; }
+        .rating-pos.top-2 { color: #C0C0C0; }
+        .rating-pos.top-3 { color: #CD7F32; }
+
+        .rating-avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background-color: var(--bg-elevated);
+            margin-right: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .rating-info {
+            flex: 1;
+        }
+
+        .rating-name {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .rating-score {
+            font-size: 13px;
+            color: var(--brand-primary);
+            font-weight: 800;
+        }
+
+        /* =================================================================
+           10. CREATE AD
+           ================================================================= */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+
+        .form-control {
+            width: 100%;
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-light);
+            padding: 16px;
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 15px;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            border-color: var(--brand-primary);
+        }
+
+        .tariff-card {
+            background-color: var(--bg-surface);
+            border: 2px solid var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: var(--transition);
+        }
+
+        .tariff-card.selected {
+            border-color: var(--brand-primary);
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+
+        .tariff-title {
+            font-size: 16px;
+            font-weight: 800;
+            margin-bottom: 5px;
+        }
+
+        .tariff-price {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--brand-primary);
+            margin-bottom: 10px;
+        }
+
+        .tariff-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* =================================================================
+           11. TOPUP
+           ================================================================= */
+        .timer-box {
+            background-color: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: var(--radius-md);
+            padding: 25px;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .timer-val {
+            font-size: 40px;
+            font-weight: 800;
+            color: var(--brand-primary);
+            font-variant-numeric: tabular-nums;
+            margin-bottom: 5px;
+        }
+
+        .timer-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .card-info {
+            background-color: var(--bg-surface);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            border: 1px solid var(--border-light);
+            margin-bottom: 20px;
+        }
+
+        .card-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            font-size: 15px;
+        }
+
+        .card-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .card-row span {
+            color: var(--text-secondary);
+        }
+
+        .card-row strong {
+            font-weight: 800;
+            letter-spacing: 1px;
+        }
+
+        /* =================================================================
+           12. PROFILE
+           ================================================================= */
+        .profile-hero {
+            background: var(--brand-gradient);
+            border-radius: var(--radius-lg);
+            padding: 30px 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow-glow);
+        }
+
+        .profile-hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 60%);
+        }
+
+        .profile-avatar-large {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            margin: 0 auto 15px;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            object-fit: cover;
+            background-color: var(--bg-surface);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            position: relative;
+            z-index: 1;
+        }
+
+        .profile-name {
+            font-size: 22px;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 5px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .profile-username {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 500;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: -40px;
+            padding: 0 20px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .stat-box {
+            background-color: var(--bg-surface);
+            border-radius: var(--radius-md);
+            padding: 15px 10px;
+            text-align: center;
+            border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-md);
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--brand-primary);
+            margin-bottom: 3px;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .menu-list {
+            background-color: var(--bg-surface);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-light);
+            overflow: hidden;
+            margin-bottom: 20px;
+            margin-top: 20px;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-light);
+            transition: var(--transition);
+        }
+
+        .menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .menu-item:active {
+            background-color: var(--bg-elevated);
+        }
+
+        .menu-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background-color: rgba(59, 130, 246, 0.1);
+            color: var(--brand-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+        }
+
+        .menu-text {
+            flex: 1;
+        }
+
+        .menu-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+
+        .menu-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* =================================================================
+           13. ADMIN
+           ================================================================= */
+        .admin-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .adm-stat-box {
+            background-color: var(--bg-surface);
+            border-radius: var(--radius-md);
+            padding: 15px;
+            border: 1px solid var(--border-light);
+        }
+
+        /* =================================================================
+           14. MODALS & TOASTS
+           ================================================================= */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 2000;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: var(--transition);
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background-color: var(--bg-base);
+            width: 100%;
+            max-width: 500px;
+            border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+            padding: 25px;
+            transform: translateY(100%);
+            transition: transform var(--transition);
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 800;
+        }
+
+        #toasts {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .toast {
+            background-color: var(--bg-elevated);
+            color: var(--text-primary);
+            padding: 12px 20px;
+            border-radius: 30px;
+            font-size: 14px;
+            font-weight: 700;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideUpFade 0.3s ease;
+        }
+
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--danger); }
+        .toast.info { border-left: 4px solid var(--brand-primary); }
+
+        /* =================================================================
+           15. SKELETON LOADER
+           ================================================================= */
+        .skeleton {
+            background: linear-gradient(90deg, var(--bg-surface) 25%, var(--bg-elevated) 50%, var(--bg-surface) 75%);
+            background-size: 1000px 100%;
+            animation: shimmer 2s infinite linear;
+            border-radius: var(--radius-md);
+        }
+    </style>
+</head>
+<body data-theme="dark">
+
+    <!-- SPLASH SCREEN -->
+    <div id="splash-screen">
+        <div class="splash-logo">🐱</div>
+        <div class="splash-title">UzbekCats</div>
+        <div class="splash-subtitle">Premium Mushuklar Bozori</div>
+        <div class="splash-loader"></div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div class="app-container" id="app-container">
+
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="header-brand">
+                <img id="header-avatar" class="header-avatar" src="" alt="Avatar">
+                <div class="header-info">
+                    <div class="header-name" id="header-name">Yuklanmoqda...</div>
+                    <div class="header-sub" id="header-sub">@username</div>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" onclick="UI.toggleTheme()">
+                    <i data-feather="moon"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- PAGE 1: DASHBOARD -->
+        <div class="page active" id="page-dashboard">
+            <div class="card card-gradient">
+                <div class="balance-title">Sizning balansingiz</div>
+                <div class="balance-value">
+                    <span id="ui-balance">...</span>
+                    <span class="currency">so'm</span>
+                </div>
+                <button class="btn btn-primary" onclick="UI.showPage('page-topup')">
+                    <i data-feather="plus"></i> Hisobni to'ldirish
+                </button>
+            </div>
+
+            <div class="search-box">
+                <i data-feather="search" class="search-icon"></i>
+                <input type="text" id="search" placeholder="Mushuk, zot yoki shahar..." onkeyup="Dashboard.filter()">
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="Dashboard.setFilter('all', this)">Hammasi</button>
+                <button class="tab" onclick="Dashboard.setFilter('new', this)">Yangi</button>
+                <button class="tab" onclick="Dashboard.setFilter('cheap', this)">Arzon</button>
+            </div>
+
+            <div class="ads-grid" id="ads-grid">
+                <div class="skeleton" style="height: 220px;"></div>
+                <div class="skeleton" style="height: 220px;"></div>
+            </div>
+        </div>
+
+        <!-- PAGE 2: RATING -->
+        <div class="page" id="page-rating">
+            <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 20px;">🏆 Konkurs Reytingi</h2>
+            <div class="rating-list" id="rating-list">
+                <div class="skeleton" style="height: 70px; margin-bottom: 10px;"></div>
+            </div>
+        </div>
+
+        <!-- PAGE 3: CREATE AD -->
+        <div class="page" id="page-create">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-size: 20px; font-weight: 800;">Reklama berish</h2>
+                <button class="icon-btn" onclick="UI.showPage('page-dashboard')"><i data-feather="x"></i></button>
+            </div>
+
+            <div id="step-1">
+                <div class="form-group">
+                    <label class="form-label">Nechta mushuk sotmoqchisiz?</label>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;" id="count-grid">
+                        <button class="tab active" onclick="CreateAd.setCount(1, this)">1 ta</button>
+                        <button class="tab" onclick="CreateAd.setCount(2, this)">2 ta</button>
+                        <button class="tab" onclick="CreateAd.setCount(3, this)">3 ta</button>
+                        <button class="tab" onclick="CreateAd.setCount(4, this)">4 ta</button>
+                        <button class="tab" onclick="CreateAd.setCount(5, this)">5 ta</button>
+                        <button class="tab" onclick="CreateAd.setCount(6, this)">6+ ta</button>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="CreateAd.next(2)">Davom etish <i data-feather="arrow-right"></i></button>
+            </div>
+
+            <div id="step-2" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Tarifni tanlang</label>
+                    <div class="tariff-card selected" id="t-web" onclick="CreateAd.setTariff('web', 10000, this)">
+                        <div class="tariff-title">🖥️ Faqat Web App</div>
+                        <div class="tariff-price" id="p-web">10 000 so'm</div>
+                        <div class="tariff-desc">Asosiy sahifada 7 kun turadi.</div>
+                    </div>
+                    <div class="tariff-card" id="t-chan" onclick="CreateAd.setTariff('channel', 25000, this)">
+                        <div class="tariff-title">📢 Faqat Kanal</div>
+                        <div class="tariff-price" id="p-chan">25 000 so'm</div>
+                        <div class="tariff-desc">Kanala muddatsiz chiqadi.</div>
+                    </div>
+                    <div class="tariff-card" id="t-both" onclick="CreateAd.setTariff('both', 32000, this)">
+                        <div class="tariff-title">🚀 Web + Kanal</div>
+                        <div class="tariff-price" id="p-both">32 000 so'm</div>
+                        <div class="tariff-desc">Ikkalasida ham eng ko'p odam ko'radi.</div>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="CreateAd.next(3)">Davom etish <i data-feather="arrow-right"></i></button>
+            </div>
+
+            <div id="step-3" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">Rasmlar (Maks 3 ta)</label>
+                    <div style="border: 2px dashed var(--border-light); border-radius: var(--radius-md); padding: 30px; text-align: center;" onclick="document.getElementById('file-input').click()">
+                        <i data-feather="camera" style="width: 30px; color: var(--brand-primary); margin-bottom: 10px;"></i>
+                        <div style="font-weight: 700;">Rasm yuklash</div>
+                        <input type="file" id="file-input" multiple accept="image/*" style="display: none;" onchange="CreateAd.handleFiles(this)">
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px;" id="img-preview"></div>
+                </div>
+                <button class="btn btn-primary" onclick="CreateAd.next(4)">Davom etish <i data-feather="arrow-right"></i></button>
+            </div>
+
+            <div id="step-4" style="display: none;">
+                <div class="form-group"><label class="form-label">Zot</label><input type="text" id="in-breed" class="form-control" placeholder="Masalan: British"></div>
+                <div class="form-group"><label class="form-label">Narxi (so'm)</label><input type="number" id="in-price" class="form-control" placeholder="1500000"></div>
+                <div class="form-group"><label class="form-label">Manzil</label><input type="text" id="in-address" class="form-control" placeholder="Toshkent"></div>
+                <div class="form-group"><label class="form-label">Telefon</label><input type="text" id="in-phone" class="form-control" placeholder="+998901234567"></div>
+                <button class="btn btn-primary" onclick="CreateAd.submit()">Tasdiqlash va To'lov <i data-feather="check"></i></button>
+            </div>
+        </div>
+
+        <!-- PAGE 4: MY ADS -->
+        <div class="page" id="page-myads">
+            <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 20px;">Mening e'lonlarim</h2>
+            <div id="myads-list">
+                <div class="skeleton" style="height: 100px; margin-bottom: 15px;"></div>
+            </div>
+        </div>
+
+        <!-- PAGE 5: TOPUP -->
+        <div class="page" id="page-topup">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-size: 20px; font-weight: 800;">Hisobni to'ldirish</h2>
+                <button class="icon-btn" onclick="UI.showPage('page-profile')"><i data-feather="x"></i></button>
+            </div>
+
+            <div id="topup-1">
+                <div class="form-group">
+                    <label class="form-label">Summani kiriting (so'm)</label>
+                    <input type="number" id="topup-amount" class="form-control" placeholder="Masalan: 25000">
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+                    <button class="tab" onclick="document.getElementById('topup-amount').value = 10000">10 000</button>
+                    <button class="tab" onclick="document.getElementById('topup-amount').value = 25000">25 000</button>
+                    <button class="tab" onclick="document.getElementById('topup-amount').value = 50000">50 000</button>
+                </div>
+                <button class="btn btn-primary" onclick="Topup.start()">Davom etish <i data-feather="arrow-right"></i></button>
+            </div>
+
+            <div id="topup-2" style="display: none;">
+                <div class="timer-box">
+                    <div class="timer-val" id="topup-timer">10:00</div>
+                    <div class="timer-text">To'lov vaqti</div>
+                </div>
+                <div class="card-info">
+                    <div class="card-row"><span>Karta raqami</span> <strong id="t-card">...</strong></div>
+                    <div class="card-row"><span>Karta egasi</span> <strong id="t-holder">...</strong></div>
+                    <div class="card-row"><span>Summa</span> <strong id="t-amount" style="color: var(--success);">0 so'm</strong></div>
+                </div>
+                <label class="btn btn-outline" style="cursor: pointer; margin-bottom: 15px;">
+                    <i data-feather="upload"></i> Chekni yuklash
+                    <input type="file" accept="image/*" style="display: none;" onchange="Topup.upload(this)">
+                </label>
+                <div id="receipt-img"></div>
+            </div>
+        </div>
+
+        <!-- PAGE 6: PROFILE -->
+        <div class="page" id="page-profile">
+            <div class="profile-hero">
+                <img id="prof-avatar" class="profile-avatar-large" src="" alt="User">
+                <div class="profile-name" id="prof-name">...</div>
+                <div class="profile-username" id="prof-user">@...</div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="stat-value" id="prof-balance">0</div>
+                    <div class="stat-label">Balans</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="prof-spent">0</div>
+                    <div class="stat-label">Sarflangan</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" id="prof-ads">0</div>
+                    <div class="stat-label">E'lonlar</div>
+                </div>
+            </div>
+
+            <div class="menu-list">
+                <div class="menu-item" onclick="UI.showPage('page-topup')">
+                    <div class="menu-icon"><i data-feather="credit-card"></i></div>
+                    <div class="menu-text"><div class="menu-title">Hisobni to'ldirish</div></div>
+                    <i data-feather="chevron-right" style="color: var(--text-secondary);"></i>
+                </div>
+                <div class="menu-item" onclick="UI.showPage('page-myads')">
+                    <div class="menu-icon"><i data-feather="list"></i></div>
+                    <div class="menu-text"><div class="menu-title">E'lonlarim</div></div>
+                    <i data-feather="chevron-right" style="color: var(--text-secondary);"></i>
+                </div>
+                <div class="menu-item" id="btn-admin" style="display: none;" onclick="UI.showPage('page-admin')">
+                    <div class="menu-icon" style="background: rgba(239, 68, 68, 0.1); color: var(--danger);"><i data-feather="shield"></i></div>
+                    <div class="menu-text"><div class="menu-title">Admin Panel</div></div>
+                    <i data-feather="chevron-right" style="color: var(--text-secondary);"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE 7: ADMIN -->
+        <div class="page" id="page-admin">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-size: 20px; font-weight: 800;">Admin Panel</h2>
+                <button class="icon-btn" onclick="UI.showPage('page-profile')"><i data-feather="x"></i></button>
+            </div>
+            <div class="admin-stats">
+                <div class="adm-stat-box"><div class="stat-value" id="adm-today">0</div><div class="stat-label">Bugun</div></div>
+                <div class="adm-stat-box"><div class="stat-value" id="adm-month">0</div><div class="stat-label">Oylik</div></div>
+            </div>
+            <div class="menu-list" style="margin-top: 20px;">
+                <div class="menu-item" onclick="UI.openModal('modal-card')">
+                    <div class="menu-icon"><i data-feather="plus-circle"></i></div>
+                    <div class="menu-text"><div class="menu-title">Karta qo'shish</div></div>
+                </div>
+                <div class="menu-item" onclick="UI.openModal('modal-userbot')">
+                    <div class="menu-icon"><i data-feather="cpu"></i></div>
+                    <div class="menu-text"><div class="menu-title">Userbot ulash</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTTOM NAV -->
+        <nav class="bottom-nav">
+            <button class="nav-item active" onclick="UI.showPage('page-dashboard', this)">
+                <div class="nav-icon"><i data-feather="home"></i></div>
+                <span>Asosiy</span>
+            </button>
+            <button class="nav-item" onclick="UI.showPage('page-rating', this)">
+                <div class="nav-icon"><i data-feather="bar-chart-2"></i></div>
+                <span>Reyting</span>
+            </button>
+
+            <div class="nav-fab" onclick="UI.showPage('page-create')">
+                <i data-feather="plus"></i>
+            </div>
+
+            <button class="nav-item" onclick="UI.showPage('page-myads', this)">
+                <div class="nav-icon"><i data-feather="layers"></i></div>
+                <span>E'lonlarim</span>
+            </button>
+            <button class="nav-item" onclick="UI.showPage('page-profile', this)">
+                <div class="nav-icon"><i data-feather="user"></i></div>
+                <span>Profil</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- MODALS -->
+    <div class="modal-overlay" id="modal-card">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Karta qo'shish</div>
+                <button class="icon-btn" onclick="UI.closeModal('modal-card')"><i data-feather="x"></i></button>
+            </div>
+            <input type="text" id="adm-card-num" class="form-control" placeholder="Karta raqami" style="margin-bottom: 15px;">
+            <input type="text" id="adm-card-holder" class="form-control" placeholder="Karta egasi" style="margin-bottom: 20px;">
+            <button class="btn btn-primary" onclick="Admin.saveCard()">Saqlash</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-userbot">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Userbot</div>
+                <button class="icon-btn" onclick="UI.closeModal('modal-userbot')"><i data-feather="x"></i></button>
+            </div>
+            <input type="text" id="ub-phone" class="form-control" placeholder="+998901234567" style="margin-bottom: 15px;">
+            <button class="btn btn-primary" onclick="Admin.ubSend()">Kod olish</button>
+            <div id="ub-verify" style="display: none; margin-top: 15px;">
+                <input type="text" id="ub-code" class="form-control" placeholder="Kod" style="margin-bottom: 15px;">
+                <button class="btn btn-primary" onclick="Admin.ubVerify()">Tasdiqlash</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toasts"></div>
+
+    <!-- =====================================================================
+         JAVASCRIPT LOGIC (100% API - DEMO YO'Q)
+         ===================================================================== -->
+    <script>
+        // =================================================================
+        // 1. TELEGRAM VA GLOBAL SOZLAMALAR
+        // =================================================================
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        // Backend API manzili (Railway'ga deploy qilganda shu yerni o'zgartirasan)
+        const API_BASE = 'http://127.0.0.1:8000/api';
+
+        let STATE = {
+            user: null,
+            token: tg.initData || '',
+            ads: [],
+            currentFilter: 'all',
+            searchQuery: ''
+        };
+
+        const PRICES = {
+            web: { 1: 10000, 2: 18000, 3: 25000, 4: 31000, 5: 38000, 6: 38000 },
+            channel: { 1: 25000, 2: 45000, 3: 65000, 4: 85000, 5: 105000, 6: 105000 },
+            both: { 1: 32000, 2: 50000, 3: 75000, 4: 95000, 5: 115000, 6: 115000 }
+        };
+
+        // =================================================================
+        // 2. API WRAPPER (Faqat Haqiqiy Server)
+        // =================================================================
+        const API = {
+            async request(endpoint, options = {}) {
+                try {
+                    const res = await fetch(API_BASE + endpoint, {
+                        ...options,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Telegram-Init-Data': STATE.token,
+                            ...options.headers
+                        }
+                    });
+
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || `Xatolik: ${res.status}`);
+                    }
+                    return await res.json();
+                } catch (e) {
+                    console.error('API Xatosi:', e);
+                    UI.toast(e.message, 'error');
+                    throw e;
+                }
+            }
+        };
+
+        // =================================================================
+        // 3. UI CONTROLLER
+        // =================================================================
+        const UI = {
+            init() {
+                feather.replace();
+
+                if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                    const u = tg.initDataUnsafe.user;
+
+                    document.getElementById('header-name').innerText = u.first_name || 'Foydalanuvchi';
+                    document.getElementById('header-sub').innerText = u.last_name ? u.last_name : '';
+                    document.getElementById('prof-name').innerText = `${u.first_name} ${u.last_name || ''}`;
+                    document.getElementById('prof-user').innerText = u.username ? `@${u.username}` : '';
+
+                    const defaultAvatar = 'https://ui-avatars.com/api/?name=' + (u.first_name || 'U') + '&background=3B82F6&color=fff';
+                    const avatarUrl = u.photo_url || defaultAvatar;
+
+                    document.getElementById('header-avatar').src = avatarUrl;
+                    document.getElementById('prof-avatar').src = avatarUrl;
+                } else {
+                    document.getElementById('header-name').innerText = "Mehmon (Telegramsiz)";
+                    document.getElementById('header-avatar').src = "https://ui-avatars.com/api/?name=G&background=3B82F6&color=fff";
+                }
+
+                setTimeout(() => {
+                    document.getElementById('splash-screen').style.animation = 'fadeOutSplash 0.8s forwards';
+                    document.getElementById('app-container').classList.add('loaded');
+                    this.loadData();
+                }, 2000);
+
+                const theme = localStorage.getItem('theme') || 'dark';
+                document.body.setAttribute('data-theme', theme);
+            },
+
+            async loadData() {
+                try {
+                    // Faqat va faqat API dan olinadi!
+                    STATE.user = await API.request('/user/me');
+
+                    document.getElementById('ui-balance').innerText = STATE.user.balance.toLocaleString();
+                    document.getElementById('prof-balance').innerText = STATE.user.balance.toLocaleString();
+                    document.getElementById('prof-spent').innerText = (STATE.user.spent || 0).toLocaleString();
+                    document.getElementById('prof-ads').innerText = STATE.user.ad_count || 0;
+
+                    if (STATE.user.is_admin) {
+                        document.getElementById('btn-admin').style.display = 'flex';
+                    }
+
+                    Dashboard.loadAds();
+                    Rating.load();
+                } catch (e) {
+                    document.getElementById('ui-balance').innerText = "Xatolik";
+                    document.getElementById('ads-grid').innerHTML = `
+                        <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--danger);">
+                            <i data-feather="wifi-off" style="width: 40px; height: 40px; margin-bottom: 10px;"></i>
+                            <h3>Server bilan aloqa yo'q</h3>
+                            <p style="font-size: 13px; color: var(--text-secondary); margin-top: 5px;">Iltimos, API ishlayotganiga ishonch hosil qiling.</p>
+                        </div>
+                    `;
+                    feather.replace();
+                }
+            },
+
+            showPage(id, btn = null) {
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+                document.getElementById(id).classList.add('active');
+
+                if (btn) {
+                    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                    btn.classList.add('active');
+                }
+                window.scrollTo(0, 0);
+            },
+
+            toggleTheme() {
+                const current = document.body.getAttribute('data-theme');
+                const next = current === 'dark' ? 'light' : 'dark';
+                document.body.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+            },
+
+            toast(msg, type = 'info') {
+                const t = document.createElement('div');
+                t.className = `toast ${type}`;
+                t.innerHTML = `<i data-feather="${type === 'success' ? 'check-circle' : type === 'error' ? 'alert-circle' : 'info'}"></i> ${msg}`;
+                document.getElementById('toasts').appendChild(t);
+                feather.replace();
+                setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+            },
+
+            openModal(id) { document.getElementById(id).classList.add('active'); },
+            closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        };
+
+        // =================================================================
+        // 4. DASHBOARD
+        // =================================================================
+        const Dashboard = {
+            async loadAds() {
+                try {
+                    STATE.ads = await API.request('/ads');
+                    this.render();
+                } catch(e) {
+                    // Xatolik UI.loadData da ushlangan
+                }
+            },
+
+            setFilter(type, btn) {
+                STATE.currentFilter = type;
+                document.querySelectorAll('.tabs .tab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.render();
+            },
+
+            filter() {
+                STATE.searchQuery = document.getElementById('search').value.toLowerCase();
+                this.render();
+            },
+
+            render() {
+                let ads = [...STATE.ads];
+
+                if (STATE.searchQuery) {
+                    ads = ads.filter(a =>
+                        a.title.toLowerCase().includes(STATE.searchQuery) ||
+                        a.address.toLowerCase().includes(STATE.searchQuery)
+                    );
+                }
+
+                if (STATE.currentFilter === 'cheap') {
+                    ads.sort((a, b) => a.price - b.price);
+                }
+
+                const grid = document.getElementById('ads-grid');
+
+                if (ads.length === 0) {
+                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-secondary);">Hozircha e'lonlar yo'q</div>`;
+                    return;
+                }
+
+                grid.innerHTML = ads.map(ad => {
+                    // Rasmlarni tekshirish
+                    let imgUrl = 'https://via.placeholder.com/300?text=Rasm+yoq';
+                    if (ad.photos && ad.photos.length > 0) {
+                        imgUrl = ad.photos[0];
+                    }
+
+                    return `
+                    <div class="ad-card">
+                        <div class="ad-img-wrap">
+                            <img src="${imgUrl}" class="ad-img">
+                            <span class="ad-badge">Sotiladi</span>
+                        </div>
+                        <div class="ad-content">
+                            <div class="ad-title">${ad.title || ad.breed}</div>
+                            <div class="ad-loc"><i data-feather="map-pin" style="width: 12px;"></i> ${ad.address}</div>
+                            <div class="ad-price">${parseInt(ad.price).toLocaleString()} so'm</div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+                feather.replace();
+            }
+        };
+
+        // =================================================================
+        // 5. RATING
+        // =================================================================
+        const Rating = {
+            async load() {
+                try {
+                    const data = await API.request('/rating');
+                    document.getElementById('rating-list').innerHTML = data.map((u, i) => `
+                        <div class="rating-item">
+                            <div class="rating-pos top-${i+1}">${i+1}</div>
+                            <div class="rating-avatar"><i data-feather="user"></i></div>
+                            <div class="rating-info">
+                                <div class="rating-name">${u.name}</div>
+                            </div>
+                            <div class="rating-score">${u.score} ball</div>
+                        </div>
+                    `).join('');
+                    feather.replace();
+                } catch(e) {}
+            }
+        };
+
+        // =================================================================
+        // 6. CREATE AD
+        // =================================================================
+        const CreateAd = {
+            count: 1,
+            tariff: 'web',
+            price: 10000,
+            photos: [],
+
+            setCount(num, btn) {
+                this.count = num;
+                document.querySelectorAll('#count-grid .tab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                document.getElementById('p-web').innerText = PRICES.web[num].toLocaleString() + " so'm";
+                document.getElementById('p-chan').innerText = PRICES.channel[num].toLocaleString() + " so'm";
+                document.getElementById('p-both').innerText = PRICES.both[num].toLocaleString() + " so'm";
+
+                this.setTariff(this.tariff, PRICES[this.tariff][num], document.getElementById(`t-${this.tariff === 'web' ? 'web' : this.tariff === 'channel' ? 'chan' : 'both'}`));
+            },
+
+            setTariff(type, price, el) {
+                this.tariff = type;
+                this.price = PRICES[type][this.count];
+
+                document.querySelectorAll('.tariff-card').forEach(c => c.classList.remove('selected'));
+                el.classList.add('selected');
+            },
+
+            next(step) {
+                if (step === 4 && this.photos.length === 0) {
+                    return UI.toast('Kamida 1 ta rasm yuklang', 'error');
+                }
+                document.querySelectorAll('#page-create > div[id^="step-"]').forEach(d => d.style.display = 'none');
+                document.getElementById('step-' + step).style.display = 'block';
+            },
+
+            handleFiles(input) {
+                if (input.files && input.files.length > 0) {
+                    const files = Array.from(input.files).slice(0, 3);
+                    const prev = document.getElementById('img-preview');
+                    prev.innerHTML = '';
+                    this.photos = [];
+
+                    files.forEach(f => {
+                        const reader = new FileReader();
+                        reader.onload = e => {
+                            this.photos.push(e.target.result);
+                            prev.innerHTML += `<img src="${e.target.result}" style="width: 100%; height: 80px; object-fit: cover; border-radius: 10px;">`;
+                        };
+                        reader.readAsDataURL(f);
+                    });
+                }
+            },
+
+            async submit() {
+                // Balansni tekshirish (API dan olingan)
+                if (!STATE.user || STATE.user.balance < this.price) {
+                    return UI.toast('Hisobingizda mablag\' yetarli emas!', 'error');
+                }
+
+                const data = {
+                    tariff: this.tariff,
+                    count: this.count,
+                    photos: this.photos,
+                    breed: document.getElementById('in-breed').value,
+                    price: document.getElementById('in-price').value,
+                    address: document.getElementById('in-address').value,
+                    phone: document.getElementById('in-phone').value
+                };
+
+                if (!data.breed || !data.price || !data.address || !data.phone) {
+                    return UI.toast('Barcha maydonlarni to\'ldiring', 'error');
+                }
+
+                try {
+                    await API.request('/ads', { method: 'POST', body: JSON.stringify(data) });
+                    UI.toast('E\'lon yaratildi!', 'success');
+                    UI.showPage('page-myads');
+                    UI.loadData(); // Balansni yangilash
+                } catch(e) {
+                    // Xatolik API da ushlangan
+                }
+            }
+        };
+
+        // =================================================================
+        // 7. TOPUP
+        // =================================================================
+        const Topup = {
+            timer: null,
+
+            async start() {
+                const amt = document.getElementById('topup-amount').value;
+                if (!amt || amt < 1000) {
+                    return UI.toast('Minimal 1000 so\'m', 'error');
+                }
+
+                try {
+                    // API dan karta ma'lumotlarini olish
+                    const res = await API.request('/topup', {
+                        method: 'POST',
+                        body: JSON.stringify({ amount: parseInt(amt) })
+                    });
+
+                    document.getElementById('topup-1').style.display = 'none';
+                    document.getElementById('topup-2').style.display = 'block';
+
+                    document.getElementById('t-card').innerText = res.card_number;
+                    document.getElementById('t-holder').innerText = res.card_holder;
+                    document.getElementById('t-amount').innerText = parseInt(amt).toLocaleString() + " so'm";
+
+                    let time = res.timer_seconds || 600;
+                    clearInterval(this.timer);
+
+                    this.timer = setInterval(() => {
+                        const m = Math.floor(time / 60).toString().padStart(2, '0');
+                        const s = (time % 60).toString().padStart(2, '0');
+                        document.getElementById('topup-timer').innerText = `${m}:${s}`;
+
+                        if (time <= 0) {
+                            clearInterval(this.timer);
+                            document.getElementById('topup-timer').innerText = "00:00";
+                            UI.toast('To\'lov vaqti tugadi!', 'error');
+                        }
+                        time--;
+                    }, 1000);
+
+                } catch(e) {
+                    UI.toast('Karta ma\'lumotlarini olishda xatolik', 'error');
+                }
+            },
+
+            upload(input) {
+                if (input.files && input.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        // Chekni ko'rsatish
+                        document.getElementById('receipt-img').innerHTML = `
+                            <img src="${e.target.result}" style="width: 100%; border-radius: var(--radius-md); border: 1px solid var(--success);">
+                            <div style="text-align: center; color: var(--success); font-size: 13px; margin-top: 10px; font-weight: bold;">Chek yuklandi!</div>
+                        `;
+
+                        // Chekni API ga yuborish
+                        const formData = new FormData();
+                        // formData.append('payment_id', paymentId); // Buni API dan olish kerak
+                        formData.append('file', input.files[0]);
+
+                        fetch(API_BASE + '/topup/receipt', {
+                            method: 'POST',
+                            headers: { 'X-Telegram-Init-Data': STATE.token },
+                            body: formData
+                        }).then(res => {
+                            if(res.ok) {
+                                UI.toast('Chek qabul qilindi! Admin tasdiqlaydi.', 'success');
+                                clearInterval(Topup.timer);
+                            } else {
+                                UI.toast('Chekni yuklashda xatolik', 'error');
+                            }
+                        });
+                    };
+                    reader.readAsDataURL(input.files[0]);
+                }
+            }
+        };
+
+        // =================================================================
+        // 8. ADMIN
+        // =================================================================
+        const Admin = {
+            async saveCard() {
+                const num = document.getElementById('adm-card-num').value;
+                const holder = document.getElementById('adm-card-holder').value;
+
+                if (!num || !holder) return UI.toast('Barcha maydonlarni to\'ldiring', 'error');
+
+                try {
+                    await API.request('/admin/card', {
+                        method: 'POST',
+                        body: JSON.stringify({ number: num, holder: holder })
+                    });
+                    UI.toast('Karta saqlandi!', 'success');
+                    UI.closeModal('modal-card');
+                } catch(e) {}
+            },
+
+            async ubSend() {
+                const phone = document.getElementById('ub-phone').value;
+                if (!phone) return UI.toast('Telefon raqamni kiriting', 'error');
+
+                try {
+                    await API.request('/admin/userbot/send_code', {
+                        method: 'POST',
+                        body: JSON.stringify({ phone: phone })
+                    });
+                    document.getElementById('ub-verify').style.display = 'block';
+                    UI.toast('Kod yuborildi!', 'success');
+                } catch(e) {}
+            },
+
+            async ubVerify() {
+                const phone = document.getElementById('ub-phone').value;
+                const code = document.getElementById('ub-code').value;
+                if (!code) return UI.toast('Kodni kiriting', 'error');
+
+                try {
+                    await API.request('/admin/userbot/verify_code', {
+                        method: 'POST',
+                        body: JSON.stringify({ phone: phone, code: code })
+                    });
+                    UI.toast('Userbot ulandi!', 'success');
+                    UI.closeModal('modal-userbot');
+                } catch(e) {}
+            }
+        };
+
+        // =================================================================
+        // 9. INIT
+        // =================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            UI.init();
+        });
+
+    </script>
+</body>
+</html>
