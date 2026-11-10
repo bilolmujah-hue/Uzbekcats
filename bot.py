@@ -19,7 +19,7 @@ from aiogram.types import (
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-# Telethon
+# Telethon (Userbot uchun)
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
@@ -42,12 +42,53 @@ dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-# Kanallar sozlamasi (config.py dan olinadi deb hisoblaymiz, agar yo'q bo'lsa shu yerda)
+# Kanallar sozlamasi
 CHANNEL_SOTISH = getattr(BotConfig, 'CHANNEL_ID', '@uzbek_cats') 
 CHANNEL_HADIYA = '@uzbek_cats_hadiya'
 BOT_LINK = 'https://t.me/Uzbek_cat_bot'
 
+# Global Userbot obyekti (main.py dan chaqiriladi)
 userbot_client: TelegramClient = None
+
+# =====================================================================
+# USERBOT LOGIKASI (MAIN.PY UCHUN)
+# =====================================================================
+async def start_userbot(session_string: str):
+    """Telethon orqali userbotni ishga tushirish va to'lovlarni kuzatish."""
+    global userbot_client
+    try:
+        if userbot_client and userbot_client.is_connected():
+            await userbot_client.disconnect()
+
+        userbot_client = TelegramClient(
+            StringSession(session_string), 
+            api_id=6, 
+            api_hash="eb06d4abfb49dc3eeb1aeb98ae0f581e"
+        )
+        await userbot_client.start()
+        logger.info("✅ Userbot ishga tushdi!")
+
+        @userbot_client.on(events.NewMessage(chats='CardXabarBot'))
+        async def handler(event):
+            text = event.message.text
+            match = re.search(r'([\d\s]+)\s*UZS.*\*{3}(\d{4})', text)
+            if match:
+                amount_str = match.group(1).replace(" ", "")
+                card_last4 = match.group(2)
+                amount = int(amount_str)
+
+                user_id = await db.match_userbot_payment(amount, card_last4)
+                if user_id:
+                    logger.info(f"✅ To'lov topildi: {amount} so'm, User: {user_id}")
+                    try:
+                        await bot.send_message(
+                            user_id, 
+                            f"✅ *To'lov tasdiqlandi!*\n\nHisobingizga {amount:,} so'm qo'shildi."
+                        )
+                    except: 
+                        pass
+    except Exception as e:
+        logger.error(f"❌ Userbot xatosi: {e}")
 
 # =====================================================================
 # FSM HOLATLARI
@@ -72,7 +113,6 @@ class AdStates(StatesGroup):
     preview = State()
 
 class AdminStates(StatesGroup):
-    # Asosiy admin state'lari
     add_card_number = State()
     add_card_holder = State()
     add_score_batch = State()
@@ -82,9 +122,6 @@ class AdminStates(StatesGroup):
     # Hisob qo'shish state'lari
     add_balance_user_id = State()
     add_balance_amount = State()
-    
-    # Kanal sozlamalari uchun (kelajakda kerak bo'lishi mumkin)
-    broadcast_text = State()
 
 # =====================================================================
 # KLAVIATURALAR
@@ -209,14 +246,11 @@ def get_back_kb(cb="menu_back_to_main"):
 # =====================================================================
 # YORDAMCHI FUNKSIYALAR
 # =====================================================================
-
 def escape_md(text):
-    """Markdown formatlash belgilarini xavfsiz holatga keltirish"""
     if not text: return "—"
     return str(text).replace('_', '\\_').replace('*', '\\*').replace('`', '\\`').replace('[', '\\[')
 
 async def post_to_channel(ad_data):
-    """Reklamani turiga qarab mos kanalga chiqarish va tugmalarni qo'shish"""
     ad_type = ad_data.get('ad_type')
     
     caption = (
@@ -228,7 +262,6 @@ async def post_to_channel(ad_data):
     if ad_type == 'sotish':
         caption += f"💰 *Narx:* {escape_md(ad_data.get('price'))} {escape_md(ad_data.get('currency'))}\n"
         target_channel = CHANNEL_SOTISH
-        # Sotish uchun tugmalar: Hadiya kanal va Reklama berish
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🎁 Hadiya kanal", url="https://t.me/uzbek_cats_hadiya")],
             [InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]
@@ -236,7 +269,6 @@ async def post_to_channel(ad_data):
     elif ad_type == 'hadiya':
         caption += f"🎁 *Bepul (Hadiya)*\n"
         target_channel = CHANNEL_HADIYA
-        # Hadiya uchun tugmalar: Sotiladi kanal va Reklama berish
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💰 Sotiladi kanal", url="https://t.me/uzbek_cats")],
             [InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]
@@ -397,12 +429,9 @@ async def process_cat_count(call: CallbackQuery, state: FSMContext):
     
     user = await db.get_user(call.from_user.id)
     
-    # Narxni hisoblash (Sotish uchun)
-    # Botdagi narxlar: 1 ta - 25000, 2 ta - 45000 va hokazo (Prices dan olinadi)
     try:
         price = Prices.TARIFF_BOT.get(count, 25000)
     except AttributeError:
-        # Agar config.py da TARIFF_BOT bo'lmasa, hardcode qilingan narxlar
         bot_prices = {1: 25000, 2: 45000, 3: 65000, 4: 85000, 5: 105000, 6: 105000}
         price = bot_prices.get(count, 25000)
     
@@ -559,7 +588,6 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     user = await db.get_user(user_id)
     
-    # Pulni yechish
     price = data.get('bot_price', 0)
     if price > 0:
         try:
@@ -568,7 +596,6 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
             await call.message.edit_text("❌ Balansda xatolik!")
             return
 
-    # Bazaga saqlash
     new_ad = await db.create_ad(
         user_id=user_id, ad_type=data.get('ad_type'), tariff='bot',
         photos=data.get('photos', []), breed=data.get('breed'), age=data.get('age'), gender=data.get('gender'),
@@ -577,13 +604,11 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
         ad_number=user['ad_count'] + 1
     )
 
-    # Xabarni yangilash (xatosiz)
     try:
         await call.message.delete()
     except: pass
     await bot.send_message(user_id, "✅ E'loningiz qabul qilindi va Texnik Admin tekshiruviga yuborildi!")
 
-    # Adminga yuborish
     admin_caption = f"🆕 *YANGI REKLAMA!*\n\n👤 Foydalanuvchi: #{user['user_number']} ({user['username']})\n📋 Turi: {data.get('ad_type').upper()}\n🐱 Zot: {escape_md(data.get('breed'))}"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{new_ad['id']}"), InlineKeyboardButton(text="❌ Rad etish", callback_data=f"admin_decline_ad_{new_ad['id']}")]
@@ -624,7 +649,6 @@ async def admin_panel(call: CallbackQuery):
     ])
     await call.message.edit_text(text, reply_markup=kb)
 
-# --- Admin: Botni yoqish/o'chirish ---
 @router.callback_query(F.data == "admin_toggle_bot")
 async def admin_toggle_bot(call: CallbackQuery):
     current = await db.get_setting("bot_enabled", "1")
@@ -632,7 +656,6 @@ async def admin_toggle_bot(call: CallbackQuery):
     await db.set_setting("bot_enabled", new_val)
     await call.answer("✅ Bot yoqildi!" if new_val == "1" else "🔴 Bot o'chirildi!", show_alert=True)
 
-# --- Admin: Hisob qo'shish (YANGI FUNKSIYA) ---
 @router.callback_query(F.data == "admin_add_balance")
 async def admin_add_balance_start(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text("💳 *Hisob qo'shish*\n\nFoydalanuvchining Telegram ID sini kiriting:\n(Masalan: `673018191`)\n\n/cancel - bekor qilish")
@@ -678,7 +701,6 @@ async def admin_add_balance_amount(message: Message, state: FSMContext):
     try:
         new_bal = await db.update_user_balance(user_id, abs(amount), operation)
         
-        # Foydalanuvchiga xabar yuborish
         msg_text = f"✅ Hisobingizga {amount:,} so'm qo'shildi." if amount > 0 else f"⚠️ Hisobingizdan {abs(amount):,} so'm yechildi."
         try:
             await bot.send_message(user_id, f"{msg_text}\n\n💰 Joriy balans: {new_bal:,} so'm")
@@ -690,7 +712,6 @@ async def admin_add_balance_amount(message: Message, state: FSMContext):
         
     await state.clear()
 
-# --- Admin: Ball qo'shish ---
 @router.callback_query(F.data == "admin_add_score")
 async def admin_add_score(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text("📊 *Ball qo'shish*\n\nFormat: `+998901234567 - 17`\n\n/cancel - bekor qilish")
@@ -702,10 +723,9 @@ async def process_add_score(message: Message, state: FSMContext):
         await state.clear()
         await message.answer("Bekor qilindi.")
         return
-    await message.answer("✅ Ballar muvaffaqiyatli qo'shildi!") # Soddalashtirilgan
+    await message.answer("✅ Ballar muvaffaqiyatli qo'shildi!")
     await state.clear()
 
-# --- Admin: Boshqa tugmalar (Hozircha ishlaydigan qilib qo'yildi) ---
 @router.callback_query(F.data == "admin_stats_menu")
 async def admin_stats_menu(call: CallbackQuery):
     await call.message.edit_text("📊 *Statistika bo'limi tez orada qo'shiladi.*", reply_markup=get_back_kb("admin_panel"))
@@ -751,9 +771,6 @@ async def process_tech_block_user(message: Message, state: FSMContext):
         await message.answer("❌ Iltimos, raqam kiriting.")
     await state.clear()
 
-# =====================================================================
-# REKLAMALARNI TASDIQLASH (TEXNIK ADMIN) VA KANALGA POST QILISH
-# =====================================================================
 @router.callback_query(F.data.startswith("admin_approve_ad_"))
 async def tech_admin_approve(call: CallbackQuery):
     if call.from_user.id != BotConfig.TECH_ADMIN_ID: return
@@ -761,13 +778,11 @@ async def tech_admin_approve(call: CallbackQuery):
     
     await db.update_ad_status(ad_id, "approved")
     
-    # Bazadan ma'lumotlarni tortish
     async with db.pool.acquire() as conn:
         ad_row = await conn.fetchrow("SELECT * FROM ads WHERE id = $1", ad_id)
         
     if ad_row:
         ad_data = dict(ad_row)
-        # Kanalga post qilish funksiyasini chaqirish
         await post_to_channel(ad_data)
 
     await call.message.edit_caption(caption=call.message.caption + "\n\n✅ TASDIQLANDI VA KANALGA YUBORILDI")
@@ -788,21 +803,3 @@ async def process_decline_reason(message: Message, state: FSMContext):
     await db.update_ad_status(ad_id, "rejected", reason=message.text)
     await message.answer("✅ Reklama rad etildi.")
     await state.clear()
-
-# =====================================================================
-# START
-# =====================================================================
-async def main():
-    logger.info("🚀 Bot ishga tushmoqda...")
-    await db.connect()
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
-    finally:
-        await db.disconnect()
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("🛑 Bot to'xtatildi")
