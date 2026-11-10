@@ -147,7 +147,7 @@ class DataLists:
 class Texts:
     # --- Umumiy ---
     WARNING_BANNED_WORD = "❌ Iltimos, reklama tarqatmang!"
-    BOT_DISABLED = "❌ Bot hozirda ishlamayapti. Iltimos, keyinroq urinib ko'ring."
+    BOT_DISABLED = "❌ Bot hozirda ishlamayapti. Iltimos, keyinroq urinib ko'ring. Agar Rekama bermoqchi bulsangiz iltimos Adminga mrojat qiling: @it_project_2026 "
     USER_BANNED = "❌ Siz botdan foydalanish huquqidan mahrum qilingansiz!"
 
     # --- Ro'yxatdan o'tish ---
