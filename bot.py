@@ -47,12 +47,13 @@ dp.include_router(router)
 userbot_client: TelegramClient = None
 
 # =====================================================================
-# FSM HOLATLARI
+# FSM HOLATLARI (State Machine) - HAMMASI TO'LIQ
 # =====================================================================
 class RegStates(StatesGroup):
     waiting_phone = State()
 
 class AdStates(StatesGroup):
+    choosing_cat_count = State() # QAYTA QO'SHILDI
     choosing_media_type = State()
     waiting_media = State()
     choosing_breed = State()
@@ -110,6 +111,13 @@ def get_ad_type_kb():
         [InlineKeyboardButton(text="💍 Mushukgimni Viyazkaga (kuraytirish uchun)", callback_data="adtype_vyazka")],
         [InlineKeyboardButton(text="↩️ Asosiy menyuga qaytish", callback_data="menu_back_to_main")]
     ])
+
+def get_cat_count_kb():
+    kb = []
+    for i in range(1, 6):
+        kb.append([InlineKeyboardButton(text=f"{i} ta mushuk", callback_data=f"catcount_{i}")])
+    kb.append([InlineKeyboardButton(text="+5 ta mushuk", callback_data="catcount_6")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
 
 def get_media_type_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -351,7 +359,6 @@ async def konkurs_rating(call: CallbackQuery):
         for i, u in enumerate(top_users):
             medal = "🥇" if i==0 else "🥈" if i==1 else "🥉" if i==2 else "👤"
             name = u['full_name'] if u['full_name'] else "Foydalanuvchi"
-            # XATO BO'LMASLIGI UCHUN matnlarni escape qilamiz
             safe_name = name.replace('_', '\\_').replace('*', '\\*').replace('`', '\\`')
             text += f"{medal} {i+1}. {safe_name} — *{u['score']} ball*\n"
             
@@ -366,7 +373,7 @@ async def menu_my_orders(call: CallbackQuery):
         text = "📭 Sizda hali e'lonlar mavjud emas.\n\nYangi e'lon qo'shish uchun 'Kanalga reklama bermoqchiman' tugmasini bosing."
     else:
         text = "📋 *Sizning e'lonlaringiz:*\n\n"
-        for ad in ads[:10]: # Oxirgi 10 tasini ko'rsatamiz
+        for ad in ads[:10]:
             status_map = {
                 "pending": "⏳ Kutilmoqda",
                 "approved": "✅ Tasdiqlangan",
@@ -393,6 +400,10 @@ async def choose_ad_type(call: CallbackQuery, state: FSMContext):
         diniy_matn = "Ассалому алайкум!... \n\n*Демак, мазкур нотўғри йўл билан мол касб қилиш ҳам жоиз эмас. Валлоҳу аълам!*"
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Ko'rib chiqdim, davom etish", callback_data="vyazka_confirm")]])
         await call.message.edit_text(diniy_matn, reply_markup=kb)
+    elif ad_type == "sotish":
+        await state.update_data(ad_type=ad_type)
+        await call.message.edit_text("🐱 Mushuklaringizni nechta sotmoqchisiz?", reply_markup=get_cat_count_kb())
+        await state.set_state(AdStates.choosing_cat_count) # YANGI STATE
     else:
         await state.update_data(ad_type=ad_type)
         await call.message.edit_text("📸 Qanday media yuboraysiz?", reply_markup=get_media_type_kb())
@@ -404,6 +415,47 @@ async def vyazka_confirm(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text("📸 Qanday media yuboraysiz?", reply_markup=get_media_type_kb())
     await state.set_state(AdStates.choosing_media_type)
 
+# --- MUSHUK SONI VA BALANS TEKSHIRUVI ---
+@router.callback_query(AdStates.choosing_cat_count, F.data.startswith("catcount_"))
+async def process_cat_count(call: CallbackQuery, state: FSMContext):
+    count = int(call.data.split("_")[1])
+    await state.update_data(cat_count=count)
+    
+    user_id = call.from_user.id
+    user = await db.get_user(user_id)
+    
+    count_idx = count if count <= 5 else 5
+    # Botdagi tarif narxi (TARIFF_BOT bo'lmasa TARIFF_WEB olinadi)
+    try:
+        price = Prices.TARIFF_BOT[count_idx]
+    except AttributeError:
+        try:
+            price = Prices.TARIFF_WEB[count_idx]
+        except:
+            price = 0
+            
+    await state.update_data(tariff_price=price)
+    
+    if user['balance'] < price:
+        text = (
+            f"❌ *Hisobingizda mablag' yetarli emas!*\n\n"
+            f"Kerakli summa: *{price:,} so'm*\n"
+            f"Sizning balansingiz: *{user['balance']:,} so'm*\n\n"
+            f"Iltimos, hisobingizni to'ldiring."
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Hisobni to'ldirish", web_app=types.WebAppInfo(url=f"{BotConfig.WEB_APP_URL}?page=topup"))], # WEB APP TOPUP LINK
+            [InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_reklama")]
+        ])
+        await call.message.edit_text(text, reply_markup=kb)
+        return
+        
+    await call.message.edit_text("📸 Qanday media yuboraysiz?", reply_markup=get_media_type_kb())
+    await state.set_state(AdStates.choosing_media_type)
+
+# =====================================================================
+# 4. MEDIA VA QOLGAN QADAMLAR
+# =====================================================================
 @router.callback_query(F.data.in_({"media_photo", "media_video"}))
 async def choose_media_type(call: CallbackQuery, state: FSMContext):
     media_type = "photo" if call.data == "media_photo" else "video"
@@ -415,7 +467,6 @@ async def choose_media_type(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("🎥 Iltimos, mushukning videosini yuboring (1 daqiqagacha):")
     await state.set_state(AdStates.waiting_media)
 
-# --- MUHIM TUZATISH: 1-RASMDAN KEYIN "DAVOM ETISH" TUGMASI CHIQADI ---
 @router.message(AdStates.waiting_media, F.photo)
 async def receive_photo(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -449,9 +500,6 @@ async def process_continue_media(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text("🐱 Mushuk zotini tanlang yoki o'zingiz yozing:", reply_markup=get_breed_kb(0))
     await state.set_state(AdStates.choosing_breed)
 
-# =====================================================================
-# 4. QOLGAN REKLAMA QADAMLARI (ZOT, YOSH, VA H.K.)
-# =====================================================================
 @router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_page_"))
 async def breed_page(call: CallbackQuery):
     page = int(call.data.split("_")[2])
@@ -572,21 +620,37 @@ async def send_ad_preview(message: Message, state: FSMContext):
         await message.answer(caption, reply_markup=get_preview_kb())
     await state.set_state(AdStates.preview)
 
+# --- XATO TUZATILGAN QISM: TASDIQLASH ---
 @router.callback_query(AdStates.preview, F.data == "preview_confirm")
 async def confirm_ad(call: CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
     data = await state.get_data()
     user = await db.get_user(user_id)
     
+    # Pulni yechish (Agar tarif narxi bo'lsa)
+    price = data.get('tariff_price', 0)
+    if price > 0:
+        try:
+            await db.update_user_balance(user_id, price, operation='subtract')
+        except ValueError:
+            await call.message.edit_text("❌ Balansni yechishda xatolik!")
+            return
+
     new_ad = await db.create_ad(
         user_id=user_id, ad_type=data.get('ad_type'), tariff='bot_free',
         photos=data.get('photos', []), breed=data.get('breed'), age=data.get('age'), gender=data.get('gender'),
         health=data.get('health'), sterilization=data.get('sterilization'), address=data.get('address'),
-        phone=data.get('phone'), price=data.get('price', '0'), currency=data.get('currency', 'so''m'),
+        phone=data.get('phone'), price=data.get('price', '0'), currency=data.get('currency', "so'm"),
         ad_number=user['ad_count'] + 1
     )
 
-    await call.message.edit_text("✅ E'loningiz qabul qilindi va Texnik Admin tekshiruviga yuborildi!")
+    # Xatolikni to'g'rilash: edit_text emas, delete qilib yangi xabar yuboramiz
+    try:
+        await call.message.delete()
+    except:
+        pass
+    
+    await bot.send_message(call.from_user.id, "✅ E'loningiz qabul qilindi va Texnik Admin tekshiruviga yuborildi!")
 
     admin_caption = f"🆕 *YANGI REKLAMA!*\n\n👤 Foydalanuvchi: #{user['user_number']} ({user['username']})\n📋 Turi: {data.get('ad_type').upper()}\n🐱 Zot: {data.get('breed')}"
     kb = InlineKeyboardMarkup(inline_keyboard=[
