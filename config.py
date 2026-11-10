@@ -34,7 +34,7 @@ class BotConfig:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/uzbekcats_db")
 
     # Web App URL (GitHub Pages'ga joylagandan keyin shu yerga yozasiz)
-    WEB_APP_URL: str = os.getenv("WEB_APP_URL", "https://your-github-username.github.io/uzbekcats-webapp/")
+    WEB_APP_URL: str = os.getenv("WEB_APP_URL", "https://bilolmujah-hue.github.io/Uzbekcats/")
 
 
 class Settings:
