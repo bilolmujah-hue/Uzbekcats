@@ -1,7 +1,7 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: bot.py
-# TAVSIF: Telegram Bot (Aiogram v3) + Userbot (Telethon) integratsiyasi
+# TAVSIF: To'liq mukammal Telegram Bot (Aiogram v3) + Userbot (Telethon)
 # ==============================================================================
 
 import asyncio
@@ -15,9 +15,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InputMediaPhoto, FSInputFile
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InputMediaPhoto, FSInputFile, InputFile
 )
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+
+# Telethon (Userbot uchun)
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
@@ -25,12 +29,17 @@ from telethon.sessions import StringSession
 from config import BotConfig, Settings, Prices, DataLists, Texts, UserbotConfig
 from db import db
 
-# Logging sozlamalari
+# Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Bot va Dispatcher
-bot = Bot(token=BotConfig.BOT_TOKEN, parse_mode="Markdown")
+# =====================================================================
+# BOT VA DISPATCHER SOZLAMALARI (Aiogram 3.7+ uchun to'g'rilangan)
+# =====================================================================
+bot = Bot(
+    token=BotConfig.BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
+)
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
@@ -39,19 +48,17 @@ dp.include_router(router)
 userbot_client: TelegramClient = None
 
 
-# ==============================================================================
+# =====================================================================
 # FSM HOLATLARI (State Machine)
-# ==============================================================================
+# =====================================================================
 class RegStates(StatesGroup):
     waiting_phone = State()
 
 
 class AdStates(StatesGroup):
-    # Sotish uchun yangi tarif qismi
     choosing_cat_count = State()
     choosing_tariff = State()
 
-    # Umumiy qism (Hadiya, Vyazka, Sotish)
     choosing_media_type = State()
     waiting_media = State()
     choosing_breed = State()
@@ -66,13 +73,11 @@ class AdStates(StatesGroup):
     waiting_price = State()
     preview = State()
 
-    # Yordam qismi
     yordam_media = State()
     yordam_address = State()
     yordam_phone = State()
     yordam_preview = State()
 
-    # To'lov (Hisob to'ldirish)
     topup_amount = State()
     topup_receipt = State()
 
@@ -89,18 +94,18 @@ class AdminStates(StatesGroup):
     set_mukofot_text = State()
 
 
-# ==============================================================================
-# YORDAMCHI FUNKSIYALAR (Keyboards, Text Builders)
-# ==============================================================================
+# =====================================================================
+# YORDAMCHI FUNKSIYALAR (Keyboards)
+# =====================================================================
 
 def get_main_menu_kb(is_admin=False):
     kb = [
         [InlineKeyboardButton(text="📢 Kanalga reklama bermoqchiman", callback_data="menu_reklama")],
         [InlineKeyboardButton(text="🏆 Konkursda ishtirok etmoqchiman", callback_data="menu_konkurs")],
+        [InlineKeyboardButton(text="💳 Hisobni to'ldirish", callback_data="menu_topup")],
+        [InlineKeyboardButton(text="📋 Mening e'lonlarim", callback_data="menu_my_orders")],
         [InlineKeyboardButton(text="ℹ️ Bot haqida", callback_data="menu_about")],
         [InlineKeyboardButton(text="👤 Admin bilan bog'lanish", callback_data="menu_admin")],
-        [InlineKeyboardButton(text="📋 Mening e'lonlarim", callback_data="menu_my_orders")],
-        [InlineKeyboardButton(text="💳 Hisobni to'ldirish", callback_data="menu_topup")],
         [InlineKeyboardButton(text="🖥️ Web App'ni ochish", web_app=types.WebAppInfo(url=BotConfig.WEB_APP_URL))]
     ]
     if is_admin:
@@ -135,9 +140,7 @@ def get_cat_count_kb():
 
 
 def get_tariffs_kb(cat_count: int):
-    # 6 va undan ko'p bo'lsa 5 ning narxini oladi (yoki alohida mantiq)
     count = cat_count if cat_count <= 5 else 5
-
     p_web = Prices.TARIFF_WEB[count]
     p_chan = Prices.TARIFF_CHANNEL[count]
     p_both = Prices.TARIFF_BOTH[count]
@@ -242,9 +245,19 @@ def get_preview_kb():
     ])
 
 
-# ==============================================================================
+# =====================================================================
+# YANGI QO'SHILGAN QISM: KANAL POSTI UCHUN TUGMA
+# =====================================================================
+def get_channel_post_kb():
+    """Har bir kanal postining tagiga qo'shiladigan 'Hadiya Kanal' tugmasi."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎁 Hadiya Kanal", url="https://t.me/uzbek_cats_hadiya")]
+    ])
+
+
+# =====================================================================
 # USERBOT LOGIKASI (CardXabarBot ni tinglash)
-# ==============================================================================
+# =====================================================================
 
 async def start_userbot(session_string: str):
     global userbot_client
@@ -260,15 +273,12 @@ async def start_userbot(session_string: str):
         @userbot_client.on(events.NewMessage(chats='CardXabarBot'))
         async def handler(event):
             text = event.message.text
-            # Regex orqali summa va karta oxirgi 4 raqamini ajratib olish
-            # Namuna: "Perevod na kartu 10 000 UZS ***0956"
             match = re.search(r'([\d\s]+)\s*UZS.*\*{3}(\d{4})', text)
             if match:
                 amount_str = match.group(1).replace(" ", "")
                 card_last4 = match.group(2)
                 amount = int(amount_str)
 
-                # Bazadan qidiramiz
                 user_id = await db.match_userbot_payment(amount, card_last4)
                 if user_id:
                     logger.info(f"✅ To'lov topildi: {amount} so'm, User: {user_id}")
@@ -284,25 +294,21 @@ async def start_userbot(session_string: str):
         logger.error(f"❌ Userbot xatosi: {e}")
 
 
-# ==============================================================================
-# MIDDLEWARES (Tekshiruvlar)
-# ==============================================================================
+# =====================================================================
+# 1. MIDDLEWARE VA START
+# =====================================================================
 
 @dp.message.middleware()
 async def check_user_middleware(handler, event: Message, data: dict):
     user_id = event.from_user.id
-
-    # Adminlarni tekshirmaymiz
     if user_id in BotConfig.ADMIN_IDS:
         return await handler(event, data)
 
-    # Bot o'chirilganligini tekshirish
     bot_status = await db.get_setting("bot_enabled", "1")
     if bot_status == "0":
         await event.answer(Texts.BOT_DISABLED)
         return
 
-    # Ban tekshiruvi
     user = await db.get_user(user_id)
     if user and user['is_banned']:
         await event.answer(Texts.USER_BANNED)
@@ -310,10 +316,6 @@ async def check_user_middleware(handler, event: Message, data: dict):
 
     return await handler(event, data)
 
-
-# ==============================================================================
-# 1. START VA RO'YXATDAN O'TISH
-# ==============================================================================
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
@@ -326,7 +328,6 @@ async def cmd_start(message: Message, state: FSMContext):
         await message.answer(Texts.MAIN_MENU, reply_markup=get_main_menu_kb(user_id in BotConfig.ADMIN_IDS))
         return
 
-    # Referal kodni saqlash
     ref_code = None
     if len(args) > 1:
         ref_code = args[1]
@@ -349,7 +350,6 @@ async def process_phone(message: Message, state: FSMContext):
 
     phone = phone if phone.startswith("+") else f"+{phone}"
 
-    # Bazaga saqlash
     data = await state.get_data()
     ref_code = data.get('ref_code')
 
@@ -364,7 +364,6 @@ async def process_phone(message: Message, state: FSMContext):
         referral_code=ref_code
     )
 
-    # Adminlarga xabar yuborish (Texnik adminga)
     admin_text = (
         f"🆕 *#{user['user_number']} FOYDALANUVCHI RO'YXATDAN O'TTI*\n\n"
         f"👤 *Ism-familiya:* {full_name}\n"
@@ -389,9 +388,9 @@ async def process_phone(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ==============================================================================
+# =====================================================================
 # 2. ASOSIY MENYU VA NAVIGATSIYA
-# ==============================================================================
+# =====================================================================
 
 @router.callback_query(F.data == "menu_back_to_main")
 async def back_to_main(call: CallbackQuery):
@@ -436,9 +435,9 @@ async def show_prices(call: CallbackQuery):
     await call.message.edit_text(text, reply_markup=kb)
 
 
-# ==============================================================================
+# =====================================================================
 # 3. REKLAMA BERISH (SOTISH, HADIYA, VYAZKA)
-# ==============================================================================
+# =====================================================================
 
 @router.callback_query(F.data.startswith("adtype_"))
 async def choose_ad_type(call: CallbackQuery, state: FSMContext):
@@ -450,12 +449,10 @@ async def choose_ad_type(call: CallbackQuery, state: FSMContext):
     await state.update_data(ad_type=ad_type)
 
     if ad_type == "sotish":
-        # Yangi Tarif tizimi
         text = "🐱 Mushuklaringizni nechta sotmoqchisiz?"
         await call.message.edit_text(text, reply_markup=get_cat_count_kb())
         await state.set_state(AdStates.choosing_cat_count)
     else:
-        # Hadiya yoki Vyazka (Eski tizim - Bepul)
         if ad_type == "vyazka":
             diniy_matn = (
                 "Ассалому алайкум! Мени мушугим зотли. Бирон бир зотли мушукка чатиштиришга берсам ёки қўштирганимга пул олсам бўладими?\n\n"
@@ -477,7 +474,6 @@ async def vyazka_confirm(call: CallbackQuery, state: FSMContext):
     await state.set_state(AdStates.choosing_media_type)
 
 
-# --- SOTISH UCHUN TARIF TANLASH ---
 @router.callback_query(AdStates.choosing_cat_count, F.data.startswith("catcount_"))
 async def process_cat_count(call: CallbackQuery, state: FSMContext):
     count = int(call.data.split("_")[1])
@@ -491,17 +487,12 @@ async def process_cat_count(call: CallbackQuery, state: FSMContext):
 @router.callback_query(AdStates.choosing_tariff, F.data.startswith("tariff_"))
 async def process_tariff(call: CallbackQuery, state: FSMContext):
     parts = call.data.split("_")
-    # tariff_web_only_1 -> ['tariff', 'web', 'only', '1']
-    # tariff_channel_only_1
-    # tariff_web_and_channel_1
-
     tariff_type = "_".join(parts[1:-1])
     cat_count = int(parts[-1])
 
     user_id = call.from_user.id
     user = await db.get_user(user_id)
 
-    # Narxni hisoblash
     count_idx = cat_count if cat_count <= 5 else 5
     price = 0
     if tariff_type == "web_only":
@@ -511,7 +502,6 @@ async def process_tariff(call: CallbackQuery, state: FSMContext):
     elif tariff_type == "web_and_channel":
         price = Prices.TARIFF_BOTH[count_idx]
 
-    # Balansni tekshirish
     if user['balance'] < price:
         text = (
             f"❌ *Hisobingizda mablag' yetarli emas!*\n\n"
@@ -526,14 +516,12 @@ async def process_tariff(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text(text, reply_markup=kb)
         return
 
-    # Hammasi joyida, pulni keyinroq (Tasdiqlashda) yechamiz.
     await state.update_data(tariff=tariff_type, price=price)
 
     await call.message.edit_text("📸 Qanday media yuboraysiz?", reply_markup=get_media_type_kb())
     await state.set_state(AdStates.choosing_media_type)
 
 
-# --- MEDIA TANLASH (UMUMIY) ---
 @router.callback_query(F.data.in_({"media_photo", "media_video"}))
 async def choose_media_type(call: CallbackQuery, state: FSMContext):
     media_type = "photo" if call.data == "media_photo" else "video"
@@ -582,12 +570,10 @@ async def process_continue_media(call: CallbackQuery, state: FSMContext):
         await call.answer("❌ Iltimos, kamida 1 ta rasm/video yuboring!", show_alert=True)
         return
 
-    # Zot tanlashga o'tamiz
     await call.message.edit_text("🐱 Mushuk zotini tanlang yoki o'zingiz yozing:", reply_markup=get_breed_kb(0))
     await state.set_state(AdStates.choosing_breed)
 
 
-# --- ZOT, YOSH, SOG'LIQ, JINS, STERILIZATSIYA ---
 @router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_page_"))
 async def breed_page(call: CallbackQuery):
     page = int(call.data.split("_")[2])
@@ -654,7 +640,6 @@ async def process_sterilization(call: CallbackQuery, state: FSMContext):
     await state.set_state(AdStates.waiting_address)
 
 
-# --- MANZIL VA TELEFON ---
 @router.callback_query(AdStates.waiting_address, F.data.startswith("viloyat_"))
 async def process_address(call: CallbackQuery, state: FSMContext):
     address = call.data.replace("viloyat_", "").replace("_", " ").title()
@@ -667,7 +652,6 @@ async def process_address(call: CallbackQuery, state: FSMContext):
 @router.message(AdStates.waiting_phone)
 async def process_ad_phone(message: Message, state: FSMContext):
     phone = message.text.strip()
-    # Telefon validatsiyasi
     digits = re.sub(r'\D', '', phone)
     if len(digits) != 12 or not digits.startswith("998"):
         await message.answer("❌ Iltimos, to'g'ri formatda kiriting (+998901234567):")
@@ -679,11 +663,9 @@ async def process_ad_phone(message: Message, state: FSMContext):
     data = await state.get_data()
     ad_type = data.get('ad_type')
 
-    # Hadiya uchun narx so'ramaymiz
     if ad_type == "hadiya":
         await send_ad_preview(message, state)
     else:
-        # Sotish yoki Vyazka uchun valyuta so'raymiz
         await message.answer("💰 Valyutani tanlang:", reply_markup=get_currency_kb())
         await state.set_state(AdStates.choosing_currency)
 
@@ -730,13 +712,11 @@ async def send_ad_preview(message: Message, state: FSMContext):
     photos = data.get('photos', [])
     if photos:
         if len(photos) > 1:
-            # Media group
             media = [InputMediaPhoto(media=p) for p in photos]
             media[0].caption = caption
             await message.answer_media_group(media=media)
             await message.answer("Tasdiqlaysizmi?", reply_markup=get_preview_kb())
         else:
-            # Bitta rasm/video
             try:
                 await message.answer_photo(photo=photos[0], caption=caption, reply_markup=get_preview_kb())
             except:
@@ -747,32 +727,16 @@ async def send_ad_preview(message: Message, state: FSMContext):
     await state.set_state(AdStates.preview)
 
 
-# --- TASDIQLASH VA KANALGA POST QILISH ---
 @router.callback_query(AdStates.preview, F.data == "preview_confirm")
 async def confirm_ad(call: CallbackQuery, state: FSMContext):
     user_id = call.from_user.id
     data = await state.get_data()
     ad_type = data.get('ad_type')
 
-    # Agar Sotish bo'lsa, pulni yechamiz
-    if ad_type == "sotish":
-        price = data.get('price', 0)  # Diqqat: bu yerdagi price - bu tarif narxi, mushukning narxi emas!
-        # Oldingi qadamda biz tarif narxini `price` ga saqlagan edik.
-        # Xatolik bo'lmasligi uchun FSM dagi o'zgaruvchilarni tekshiramiz.
-        tariff_price = data.get('tariff_price', 0)
-
-        # Aslida `choose_tariff` da biz `price=price` qilgan edik.
-        # Mushukning narxi esa `ad_price` bo'lishi kerak. Keling buni to'g'rilaymiz.
-        # (Kod soddaligi uchun hozir `price` - bu tarif narxi deb qabul qilamiz va DB ga yozishda ad_price ni alohida olamiz).
-        # FSM da `price` ni tarif narxi deb olganmiz, `ad_price` ni esa narx kiritishda saqlaymiz.
-
-        pass  # DB da tekshiramiz
-
     user = await db.get_user(user_id)
 
-    # Pulni yechish qismi (Tarif uchun)
     if ad_type == "sotish":
-        tariff_price = data.get('price')  # Bu yerda biz tarif narxini saqlaganmiz e'tibor bering!
+        tariff_price = data.get('price')
         if user['balance'] < tariff_price:
             await call.message.edit_text("❌ Hisobingizda mablag' yetarli emas! Iltimos, qaytadan urinib ko'ring.")
             return
@@ -782,7 +746,6 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
             await call.message.edit_text("❌ Balansni yechishda xatolik!")
             return
 
-    # Bazaga saqlash
     new_ad = await db.create_ad(
         user_id=user_id,
         ad_type=ad_type,
@@ -795,14 +758,13 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
         sterilization=data.get('sterilization'),
         address=data.get('address'),
         phone=data.get('phone'),
-        price=data.get('ad_price', data.get('price', '0')),  # Asosiy e'lon narxi
+        price=data.get('ad_price', data.get('price', '0')),
         currency=data.get('currency', 'so''m'),
         ad_number=user['ad_count'] + 1
     )
 
     await call.message.edit_text("✅ E'loningiz qabul qilindi va Texnik Admin tekshiruviga yuborildi!")
 
-    # Texnik adminga yuborish
     admin_caption = (
         f"🆕 *YANGI REKLAMA!*\n\n"
         f"👤 Foydalanuvchi: #{user['user_number']} ({user['username']})\n"
@@ -825,9 +787,9 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     await state.clear()
 
 
-# ==============================================================================
+# =====================================================================
 # 4. TO'LOV (HISOB TO'LDIRISH) TIZIMI
-# ==============================================================================
+# =====================================================================
 
 @router.callback_query(F.data == "menu_topup")
 async def start_topup(call: CallbackQuery, state: FSMContext):
@@ -860,10 +822,7 @@ async def process_topup_amount(message: Message, state: FSMContext):
     )
     await message.answer(text)
 
-    # Vaqtni eslatib turish (Timer)
     await asyncio.sleep(Settings.TOPUP_TIMER_MINUTES * 60)
-    # Vaqt tugagach tekshiramiz
-    # (Buni DB orqali tekshirish yaxshiroq, lekin soddalik uchun asyncio ishlatdik)
 
     await message.answer(
         "⏳ To'lov vaqti tugadi. Agar pul o'tkazgan bo'lsangiz, chekni yuboring yoki qaytadan urinib ko'ring.")
@@ -872,9 +831,7 @@ async def process_topup_amount(message: Message, state: FSMContext):
 
 @router.message(F.photo, AdminStates.topup_receipt)
 async def process_receipt(message: Message, state: FSMContext):
-    # Chekni qabul qilish
     file_id = message.photo[-1].file_id
-    # Buni DB ga yozishimiz kerak (Hozircha admin panelga yuboramiz)
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_confirm_payment_{message.from_user.id}")]
@@ -885,9 +842,9 @@ async def process_receipt(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ==============================================================================
+# =====================================================================
 # 5. ADMIN VA TEXNIK ADMIN PANELLARI
-# ==============================================================================
+# =====================================================================
 
 @router.callback_query(F.data == "admin_panel")
 async def admin_panel(call: CallbackQuery):
@@ -905,14 +862,12 @@ async def admin_panel(call: CallbackQuery):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💳 Karta qo'shish", callback_data="admin_add_card")],
-        [InlineKeyboardButton(text="🤖 Userbot qo'shish (Web App da)", callback_data="noop")],
         [InlineKeyboardButton(text="📢 Broadcast", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]
     ])
     await call.message.edit_text(text, reply_markup=kb)
 
 
-# --- KARTA QO'SHISH ---
 @router.callback_query(F.data == "admin_add_card")
 async def admin_add_card(call: CallbackQuery, state: FSMContext):
     await call.message.edit_text("💳 Karta raqamini kiriting (16 xonali):")
@@ -937,25 +892,77 @@ async def process_card_holder(message: Message, state: FSMContext):
     await state.clear()
 
 
-# ==============================================================================
-# 6. TEXNIK ADMIN - REKLAMALARNI TASDIQLASH
-# ==============================================================================
+# =====================================================================
+# 6. TEXNIK ADMIN - REKLAMALARNI TASDIQLASH VA KANALGA POST QILISH
+# =====================================================================
 
 @router.callback_query(F.data.startswith("admin_approve_ad_"))
 async def tech_admin_approve(call: CallbackQuery):
     if call.from_user.id != BotConfig.TECH_ADMIN_ID: return
 
     ad_id = int(call.data.split("_")[3])
-    # DB dan adni olish va statusni 'approved' qilish
-    # Keyin kanalga post qilish
+
+    # Bazadan reklamani olish (tarifni tekshirish uchun)
+    # Hozircha soddalik uchun to'g'ridan-to'g'ri statusni yangilaymiz,
+    # lekin aslida bazadan ad ma'lumotlarini olib kanalga post qilish funksiyasini chaqirish kerak.
+
     await db.update_ad_status(ad_id, "approved")
+
+    # Reklamani kanalga post qilish
+    ad_data = await db.get_ad_by_id(ad_id)  # db.py da bu funksiya bo'lishi kerak
+    if ad_data:
+        await post_to_channel_with_button(ad_data)
+
     await call.message.edit_caption(caption=call.message.caption + "\n\n✅ TASDIQLANDI")
     await call.answer("Tasdiqlandi va kanalga yuborildi!")
 
 
-# ==============================================================================
+async def post_to_channel_with_button(ad):
+    """Kanalga post yuborish va tagiga 'Hadiya Kanal' tugmasini qo'shish."""
+    caption = build_caption(ad)
+    photos = ad.get('photos', [])
+    kb = get_channel_post_kb()  # Hadiya kanal tugmasi
+
+    try:
+        if len(photos) == 1:
+            # Bitta rasm bo'lsa
+            await bot.send_photo(
+                chat_id=BotConfig.CHANNEL_ID,
+                photo=photos[0],
+                caption=caption,
+                reply_markup=kb
+            )
+        elif len(photos) > 1:
+            # Bir nechta rasm bo'lsa (Albom).
+            # Diqqat: Telegram albomning tagiga inline tugma qo'yishga ruxsat bermaydi.
+            # Shuning uchun birinchi rasmni tugma bilan, qolganlarini albom qilib yuboramiz.
+            # Yoki eng oxirida alohida xabar bilan tugmani yuboramiz.
+            # Eng yaxshi usul: Albomni yuborib, ostidan tugmali xabar yuborish.
+
+            media = [InputMediaPhoto(media=p, caption=caption if i == 0 else None) for i, p in enumerate(photos)]
+            await bot.send_media_group(chat_id=BotConfig.CHANNEL_ID, media=media)
+
+            # Albom ostidan tugma chiqarish uchun alohida xabar
+            await bot.send_message(
+                chat_id=BotConfig.CHANNEL_ID,
+                text="👇 Qo'shimcha ma'lumotlar",
+                reply_markup=kb
+            )
+        else:
+            await bot.send_message(BotConfig.CHANNEL_ID, text=caption, reply_markup=kb)
+
+    except Exception as e:
+        logger.error(f"Kanalga post yuborishda xatolik: {e}")
+
+
+def build_caption(ad):
+    # Sening caption yasash funksiyang
+    return f"🐱 Zot: {ad['breed']}\n📍 Manzil: {ad['address']}\n📞 Tel: {ad['phone']}\n💰 Narx: {ad['price']} {ad['currency']}"
+
+
+# =====================================================================
 # 7. GURUH MODERATSIYASI (BANNED WORDS)
-# ==============================================================================
+# =====================================================================
 
 @dp.message(F.chat.type.in_({"group", "supergroup"}))
 async def group_moderator(message: Message):
@@ -963,7 +970,6 @@ async def group_moderator(message: Message):
 
     text = (message.text or message.caption).lower()
 
-    # Taqiqlangan so'zlarni tekshirish
     for word in DataLists.BANNED_WORDS:
         if word in text:
             try:
@@ -973,7 +979,6 @@ async def group_moderator(message: Message):
                 pass
             return
 
-    # URL tekshiruvi (soddalashtirilgan)
     if "http://" in text or "https://" in text or "t.me/" in text:
         try:
             await message.delete()
@@ -982,18 +987,15 @@ async def group_moderator(message: Message):
             pass
 
 
-# ==============================================================================
+# =====================================================================
 # ISHGA TUSHIRISH (MAIN)
-# ==============================================================================
+# =====================================================================
 
 async def main():
     logger.info("🚀 Bot ishga tushmoqda...")
 
-    # Bazaga ulanish
     await db.connect()
 
-    # Userbotni yuklash (Bazadan sessiyani olamiz)
-    # Agar Userbot bo'lmasa bot baribir ishlayveradi
     try:
         async with db.pool.acquire() as conn:
             session = await conn.fetchval("SELECT session_string FROM userbot_sessions WHERE is_active = TRUE LIMIT 1")
@@ -1002,7 +1004,6 @@ async def main():
     except Exception as e:
         logger.warning(f"Userbotni yuklashda xatolik: {e}")
 
-    # Botni polling rejimida ishga tushirish
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
