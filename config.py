@@ -1,18 +1,35 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: config.py
-# TAVSIF: Bot va Web App uchun barcha statik ma'lumotlar, matnlar, narxlar, sozlamalar
+# TAVSIF: Barcha sozlamalar, matnlar, narxlar, ro'yxatlar — TO'LIQ ISHCHI VERSIYA
 # ==============================================================================
 
 import os
+import copy
+
+
+# ==============================================================================
+# ENV YORDAMCHI FUNKSIYALAR (xato bermaydi, default ishlatadi)
+# ==============================================================================
+
+def _env(key: str, default: str = "") -> str:
+    val = os.getenv(key)
+    return val if val else default
 
 
 def _env_int(key: str, default: int) -> int:
-    """Env dan int olish (xato bo'lsa default)."""
     try:
-        return int(os.getenv(key, str(default)))
+        val = os.getenv(key)
+        return int(val) if val else default
     except (ValueError, TypeError):
         return default
+
+
+def _env_bool(key: str, default: bool = False) -> bool:
+    val = os.getenv(key)
+    if not val:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "on", "ha")
 
 
 # ==============================================================================
@@ -21,26 +38,25 @@ def _env_int(key: str, default: int) -> int:
 
 class BotConfig:
     # --- Bot ---
-    BOT_TOKEN: str = os.getenv("BOT_TOKEN", "8577521489:AAGbp2MvcMXZlnK-KbDdmPm8WArYlJ4PxWk")
-    BOT_USERNAME: str = "@Uzbek_cat_bot"
-    BOT_LINK: str = "https://t.me/Uzbek_cat_bot"
+    BOT_TOKEN: str = _env("BOT_TOKEN", "8577521489:AAGbp2MvcMXZlnK-KbDdmPm8WArYlJ4PxWk")
+    BOT_USERNAME: str = _env("BOT_USERNAME", "@Uzbek_cat_bot")
+    BOT_LINK: str = _env("BOT_LINK", "https://t.me/Uzbek_cat_bot")
 
     # --- Adminlar ---
     ADMIN_ID: int = _env_int("ADMIN_ID", 673018191)
     TECH_ADMIN_ID: int = _env_int("TECH_ADMIN_ID", 7038296036)
-    ADMIN_IDS: list[int] = [ADMIN_ID, TECH_ADMIN_ID]
+    ADMIN_IDS: tuple = (ADMIN_ID, TECH_ADMIN_ID)
 
-    # --- Kanallar (raqamli ID — eng ishonchli usul) ---
-    CHANNEL_SOTISH_ID: int = _env_int("CHANNEL_SOTISH_ID", -1001532366057)   # @uzbek_cats
-    CHANNEL_HADIYA_ID: int = _env_int("CHANNEL_HADIYA_ID", -1003815754371)   # @uzbek_cats_hadiya
+    # --- Kanallar ---
+    CHANNEL_SOTISH_ID: int = _env_int("CHANNEL_SOTISH_ID", -1001532366057)
+    CHANNEL_HADIYA_ID: int = _env_int("CHANNEL_HADIYA_ID", -1003815754371)
 
-    CHANNEL_SOTISH_USERNAME: str = "@uzbek_cats"
-    CHANNEL_HADIYA_USERNAME: str = "@uzbek_cats_hadiya"
+    CHANNEL_SOTISH_USERNAME: str = _env("CHANNEL_SOTISH_USERNAME", "@uzbek_cats")
+    CHANNEL_HADIYA_USERNAME: str = _env("CHANNEL_HADIYA_USERNAME", "@uzbek_cats_hadiya")
 
-    CHANNEL_SOTISH_LINK: str = "https://t.me/uzbek_cats"
-    CHANNEL_HADIYA_LINK: str = "https://t.me/uzbek_cats_hadiya"
+    CHANNEL_SOTISH_LINK: str = _env("CHANNEL_SOTISH_LINK", "https://t.me/uzbek_cats")
+    CHANNEL_HADIYA_LINK: str = _env("CHANNEL_HADIYA_LINK", "https://t.me/uzbek_cats_hadiya")
 
-    # Qulaylik uchun dict ko'rinishida
     CHANNELS: dict = {
         "sotish": {
             "id": CHANNEL_SOTISH_ID,
@@ -56,74 +72,48 @@ class BotConfig:
         },
     }
 
-    # Orqaga moslik uchun (eski kod ishlashi mumkin)
+    # Eski kod uchun (orqaga moslik)
     CHANNEL_ID: int = CHANNEL_SOTISH_ID
     CHANNEL_USERNAME: str = CHANNEL_SOTISH_USERNAME
 
     # --- Database ---
-    DATABASE_URL: str = os.getenv(
+    DATABASE_URL: str = _env(
         "DATABASE_URL",
         "postgresql://postgres:password@localhost:5432/uzbekcats_db",
     )
 
     # --- Web App ---
-    WEB_APP_URL: str = os.getenv("WEB_APP_URL", "https://bilolmujah-hue.github.io/Uzbekcats/")
+    WEB_APP_URL: str = _env("WEB_APP_URL", "https://bilolmujah-hue.github.io/Uzbekcats/")
 
 
 class Settings:
-    # Web App reklamasi necha kun turadi
     WEB_AD_DAYS: int = _env_int("WEB_AD_DAYS", 7)
-
-    # Hisob to'ldirish taymeri (daqiqa)
     TOPUP_TIMER_MINUTES: int = _env_int("TOPUP_TIMER_MINUTES", 10)
-
-    # Texnik admin ulushi (foiz)
     TECH_ADMIN_PERCENT: int = _env_int("TECH_ADMIN_PERCENT", 10)
-
-    # Bot default holati (DB dagi qiymat ustuvor)
-    BOT_ENABLED: bool = True
-
-    # Minimal to'lov summasi (so'm)
-    MIN_TOPUP_AMOUNT: int = 1000
-
-    # Rasm limitlari
-    MAX_PHOTOS: int = 3
-    MIN_PHOTOS: int = 1
-
-    # Majburiy obuna (True → /start da kanallarga obuna so'raladi)
-    REQUIRE_SUBSCRIPTION: bool = True
+    BOT_ENABLED: bool = _env_bool("BOT_ENABLED", True)
+    MIN_TOPUP_AMOUNT: int = _env_int("MIN_TOPUP_AMOUNT", 1000)
+    MAX_PHOTOS: int = _env_int("MAX_PHOTOS", 3)
+    MIN_PHOTOS: int = _env_int("MIN_PHOTOS", 1)
+    REQUIRE_SUBSCRIPTION: bool = _env_bool("REQUIRE_SUBSCRIPTION", True)
 
 
 # ==============================================================================
-# 2. NARXLAR (TARIFLAR)
-# Kalit: mushuklar soni (1–5), qiymat: so'mda
+# 2. NARXLAR
 # ==============================================================================
 
 class Prices:
-    # 1-TARIF: Faqat Web App'da chiqadi
-    TARIFF_WEB: dict[int, int] = {
-        1: 10000, 2: 18000, 3: 25000, 4: 31000, 5: 38000,
-    }
-
-    # 2-TARIF: Faqat Kanalga chiqadi
-    TARIFF_CHANNEL: dict[int, int] = {
-        1: 25000, 2: 45000, 3: 65000, 4: 85000, 5: 105000,
-    }
-
-    # 3-TARIF: Web App + Kanal
-    TARIFF_BOTH: dict[int, int] = {
-        1: 32000, 2: 50000, 3: 75000, 4: 95000, 5: 115000,
-    }
-
-    # BOT orqali joylash (bot.py da ishlatiladi)
-    BOT_PRICES: dict[int, int] = {
-        1: 25000, 2: 45000, 3: 65000, 4: 85000, 5: 105000,
-    }
+    TARIFF_WEB: dict = {1: 10000, 2: 18000, 3: 25000, 4: 31000, 5: 38000}
+    TARIFF_CHANNEL: dict = {1: 25000, 2: 45000, 3: 65000, 4: 85000, 5: 105000}
+    TARIFF_BOTH: dict = {1: 32000, 2: 50000, 3: 75000, 4: 95000, 5: 115000}
+    BOT_PRICES: dict = {1: 25000, 2: 45000, 3: 65000, 4: 85000, 5: 105000}
 
     @classmethod
     def get_bot_price(cls, cat_count: int) -> int:
-        """Mushuk soni bo'yicha bot narxini olish (chegaralangan)."""
-        return cls.BOT_PRICES.get(max(1, min(5, cat_count)), 25000)
+        try:
+            n = int(cat_count)
+        except (ValueError, TypeError):
+            n = 1
+        return cls.BOT_PRICES.get(max(1, min(5, n)), 25000)
 
 
 # ==============================================================================
@@ -131,20 +121,20 @@ class Prices:
 # ==============================================================================
 
 class DataLists:
-    VILOYATLAR: list[str] = [
+    VILOYATLAR: list = [
         "Andijon", "Buxoro", "Farg'ona", "Jizzax", "Xorazm",
         "Namangan", "Navoiy", "Qashqadaryo", "Samarqand",
         "Sirdaryo", "Surxondaryo", "Toshkent", "Toshkent shahar",
     ]
 
-    AGES: list[str] = [
+    AGES: list = [
         "1 oylik", "2 oylik", "3 oylik", "4 oylik", "5 oylik",
         "6 oylik", "7 oylik", "8 oylik", "9 oylik", "10 oylik",
         "11 oylik", "1 yosh", "1,5 yosh", "2 yosh", "2,5 yosh",
         "3 yosh", "3,5 yosh", "4 yosh", "4,5 yosh", "5 yosh",
     ]
 
-    BREEDS: list[list[str]] = [
+    BREEDS: list = [
         [
             "Scottish fold", "Scottish straight", "British blue", "British chinchilla",
             "Bengal cat", "Turkish angora", "Scottish chinchila", "Gibrid", "British Shorthair",
@@ -167,7 +157,7 @@ class DataLists:
         ],
     ]
 
-    BANNED_WORDS: set[str] = {
+    BANNED_WORDS: set = {
         "mushuk sotiladi", "mushuk bor", "sotaman", "sotiladi", "mushu bor", "muwu bor", "muwu bo",
         "Mushuk bor", "sotuvda", "arzonga mushuk", "hadiyaga", "mendayam bor", "atrofida bor",
         "sotman", "kimga mushuk kerak", "Mandayam bor", "beramiz", "beraman", "сотаман",
@@ -188,7 +178,7 @@ class Texts:
     )
     USER_BANNED = "❌ Siz botdan foydalanish huquqidan mahrum qilingansiz!"
 
-    # --- Majburiy obuna ---
+    # --- Majburiy obuna (format kalitlari: sotish_icon, hadiya_icon, footer) ---
     SUB_REQUIRED_TEXT = (
         "👋 <b>Assalomu alaykum!</b>\n\n"
         "Botdan foydalanish uchun quyidagi <b>2 ta kanalga</b> obuna bo'ling:\n\n"
@@ -277,7 +267,7 @@ class Texts:
     BOT_ENABLED_ALERT = "✅ Bot yoqildi!"
     BOT_DISABLED_ALERT = "🔴 Bot o'chirildi!"
 
-    # --- To'lov (Topup) ---
+    # --- To'lov ---
     TOPUP_ASK_AMOUNT = (
         "💳 <b>Hisobni to'ldirish</b>\n\n"
         "Qancha miqdorda pul tashlamoqchisiz?\n"
@@ -330,7 +320,7 @@ class WebAppConfig:
         },
     }
 
-    CHANNELS: dict = BotConfig.CHANNELS
+    CHANNELS: dict = copy.deepcopy(BotConfig.CHANNELS)
     WEB_AD_DAYS: int = Settings.WEB_AD_DAYS
     TOPUP_TIMER_MINUTES: int = Settings.TOPUP_TIMER_MINUTES
     MIN_TOPUP_AMOUNT: int = Settings.MIN_TOPUP_AMOUNT
@@ -341,16 +331,8 @@ class WebAppConfig:
 # ==============================================================================
 
 class UserbotConfig:
-    # @CardXabarBot dan keladigan xabarni tahlil qilish uchun regex
-    # Masalan: "Perevod na kartu 10 000 UZS ***0956"
     CARD_TRANSFER_REGEX: str = r"([\d\s]+)\s*UZS.*\*{3}(\d{4})"
-
-    # Telegram API (rasmiy desktop api_id/api_hash — userbot uchun)
     API_ID: int = _env_int("TELEGRAM_API_ID", 6)
-    API_HASH: str = os.getenv("TELEGRAM_API_HASH", "eb06d4abfb49dc3eeb1aeb98ae0f581e")
-
-    # Userbot tinglaydigan bot
-    TARGET_BOT: str = os.getenv("USERBOT_TARGET_BOT", "CardXabarBot")
-
-    # Sessiyalar papkasi
-    SESSIONS_DIR: str = os.getenv("SESSIONS_DIR", "sessions")
+    API_HASH: str = _env("TELEGRAM_API_HASH", "eb06d4abfb49dc3eeb1aeb98ae0f581e")
+    TARGET_BOT: str = _env("USERBOT_TARGET_BOT", "CardXabarBot")
+    SESSIONS_DIR: str = _env("SESSIONS_DIR", "sessions")
