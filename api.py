@@ -1,8 +1,8 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: api.py
-# TAVSIF: FastAPI Backend — to'liq mukammal, barcha yangi funksiyalar (Rasm yuklash, 
-#         cats_data, Admin panel statistikasi) bilan xatosiz versiya.
+# TAVSIF: FastAPI Backend — to'liq mukammal, barcha yangi funksiyalar va
+#         xatolarni to'liq bartaraf etilgan versiyasi.
 # ==============================================================================
 
 import hashlib
@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 
 import uvicorn
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, field_validator
 from aiogram import Bot as AiogramBot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="UzbekCats API",
     description="Telegram Web App va Bot uchun Backend API",
-    version="2.0.0",
+    version="2.1.0",
 )
 
 app.add_middleware(
@@ -77,7 +77,7 @@ except Exception as e:
 
 
 # ==============================================================================
-# PYDANTIC MODELLARI (Eskilari + Yangilari)
+# PYDANTIC MODELLARI
 # ==============================================================================
 
 class TelegramAuthRequest(BaseModel):
@@ -96,12 +96,11 @@ class CatData(BaseModel):
 class AdCreateRequest(BaseModel):
     tariff: str = Field(..., pattern="^(web_only|channel_only|web_and_channel|bot)$")
     cat_count: int = Field(..., ge=1, le=5)
-    photos: List[str] = Field(..., min_length=1, max_length=5)  # Endi URL saqlanadi
+    photos: List[str] = Field(..., min_length=1, max_length=5)  # URL saqlanadi
     
-    # Yangi tizim: Har bir mushuk uchun ma'lumotlar ro'yxati
     cats_data: Optional[List[CatData]] = None
     
-    # Eski tizim bilan moslik uchun (agar cats_data bo'lmasa)
+    # Eski tizim bilan moslik uchun
     breed: Optional[str] = Field(default="Mushuk", max_length=100)
     age: Optional[str] = Field(default="1 yosh", max_length=50)
     gender: Optional[str] = Field(default="Erkak", max_length=50)
@@ -212,7 +211,6 @@ def verify_telegram_webapp_data(init_data: str) -> dict:
     if not hmac.compare_digest(calculated_hash, received_hash):
         raise HTTPException(401, "initData hash noto'g'ri")
 
-    # Muddatni tekshirish
     try:
         auth_date = int(parsed.get("auth_date", 0))
     except (ValueError, TypeError):
@@ -238,7 +236,6 @@ def verify_telegram_webapp_data(init_data: str) -> dict:
 
 
 async def get_current_user(x_telegram_init_data: str = Header(None)) -> dict:
-    """Header orqali foydalanuvchini aniqlaydi."""
     if not x_telegram_init_data:
         raise HTTPException(401, "Telegram initData yuborilmagan")
 
@@ -255,14 +252,13 @@ async def get_current_user(x_telegram_init_data: str = Header(None)) -> dict:
 
 
 async def check_admin(current_user: dict = Depends(get_current_user)) -> dict:
-    """Faqat adminlarga ruxsat."""
     if current_user["id"] not in BotConfig.ADMIN_IDS and not current_user.get("is_admin"):
         raise HTTPException(403, Texts.NOT_ADMIN)
     return current_user
 
 
 # ==============================================================================
-# YORDAMCHI FUNKSIYALAR (Kanalga post va Rasm yuklash)
+# YORDAMCHI FUNKSIYALAR
 # ==============================================================================
 
 def _parse_photos(photos) -> list:
@@ -275,7 +271,7 @@ def _parse_photos(photos) -> list:
 
 
 async def _post_ad_to_channel(ad_data: dict) -> dict:
-    """API orqali kanalga post yuborish (Yangi cats_data bilan)."""
+    """API orqali kanalga post yuborish (Video va Rasm xatosi tuzatildi)."""
     if api_bot is None:
         raise HTTPException(500, "Bot instansiyasi mavjud emas")
 
@@ -290,7 +286,6 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
         try: cats_data = json.loads(cats_data)
         except: cats_data = []
 
-    # Agar eski usulda bitta mushuk bo'lsa
     if not cats_data:
         cats_data = [{
             "breed": ad_data.get("breed") or "Noma'lum",
@@ -300,7 +295,6 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
             "sterilization": ad_data.get("sterilization") or "—"
         }]
 
-    # Mushuklar ma'lumotini chiroyli formatlash
     cats_text = ""
     for i, cat in enumerate(cats_data, 1):
         cats_text += f"🐱 <b>{i}-mushuk:</b> {cat.get('breed', '—')} | {cat.get('age', '—')} | {cat.get('gender', '—')} | {cat.get('health', '—')} | {cat.get('sterilization', '—')}\n"
@@ -342,18 +336,31 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
 
     try:
         if len(photos) > 1:
-            # Albom shaklida yuborish
             media_group = []
             for i, p in enumerate(photos):
-                # URL bo'lsa to'g'ridan to'g'ri, Base64 bo'lsa (agar eski qolgan bo'lsa) o'zgartirish
-                media = InputMediaPhoto(media=p, caption=caption if i == 0 else None, parse_mode=ParseMode.HTML)
+                # Video yoki Rasm ekanligini aniqlash
+                is_video = p.endswith(".mp4") or p.endswith(".mov") or "video" in p
+                if is_video:
+                    media = InputMediaVideo(media=p, caption=caption if i == 0 else None, parse_mode=ParseMode.HTML)
+                else:
+                    media = InputMediaPhoto(media=p, caption=caption if i == 0 else None, parse_mode=ParseMode.HTML)
                 media_group.append(media)
             
             sent_messages = await api_bot.send_media_group(chat_id=target, media=media_group)
             sent = sent_messages[0]
-            await api_bot.edit_message_reply_markup(chat_id=target, message_id=sent.message_id, reply_markup=kb)
+            
+            try:
+                await api_bot.edit_message_reply_markup(chat_id=target, message_id=sent.message_id, reply_markup=kb)
+            except TelegramBadRequest:
+                pass # "message is not modified" xatosini e'tiborsiz qoldiramiz
+                
         elif len(photos) == 1:
-            sent = await api_bot.send_photo(chat_id=target, photo=photos[0], caption=caption, reply_markup=kb)
+            p = photos[0]
+            is_video = p.endswith(".mp4") or p.endswith(".mov") or "video" in p
+            if is_video:
+                sent = await api_bot.send_video(chat_id=target, video=p, caption=caption, reply_markup=kb)
+            else:
+                sent = await api_bot.send_photo(chat_id=target, photo=p, caption=caption, reply_markup=kb)
         else:
             sent = await api_bot.send_message(chat_id=target, text=caption, reply_markup=kb)
             
@@ -365,7 +372,6 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
 
 
 async def _refund_ad(user_id: int, amount: int):
-    """Reklama rad etilganda pulni qaytarish."""
     if amount <= 0:
         return
     try:
@@ -381,11 +387,7 @@ async def _refund_ad(user_id: int, amount: int):
 
 @app.get("/api/health")
 async def health():
-    return {
-        "status": "ok",
-        "bot": BotConfig.BOT_USERNAME,
-        "time": datetime.utcnow().isoformat(),
-    }
+    return {"status": "ok", "bot": BotConfig.BOT_USERNAME, "time": datetime.utcnow().isoformat()}
 
 
 @app.get("/api/config")
@@ -409,22 +411,23 @@ async def get_frontend_config():
 
 
 # ==============================================================================
-# 2. RASM YUKLASH (YANGI ENDPOINT)
+# 2. RASM YUKLASH (Dinamik URL bilan xato tuzatildi)
 # ==============================================================================
 
 @app.post("/api/upload")
 async def upload_image(
+    request: Request,
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user)
 ):
-    """Web App dan rasmlarni serverga yuklash va URL qaytarish."""
+    """Web App dan rasmlarni serverga yuklash va to'liq URL qaytarish."""
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
-    if ext not in ("jpg", "jpeg", "png", "webp"):
-        raise HTTPException(400, "Faqat jpg, png, webp formatlar ruxsat etilgan")
+    if ext not in ("jpg", "jpeg", "png", "webp", "mp4", "mov"):
+        raise HTTPException(400, "Faqat rasm yoki video formatlar ruxsat etilgan")
 
     content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
-        raise HTTPException(400, "Rasm hajmi 5MB dan oshmasin")
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(400, "Fayl hajmi 10MB dan oshmasin")
 
     safe_name = f"ad_{user['id']}_{uuid.uuid4().hex[:8]}.{ext}"
     safe_path = os.path.join(UPLOAD_DIR, safe_name)
@@ -432,9 +435,8 @@ async def upload_image(
     with open(safe_path, "wb") as f:
         f.write(content)
 
-    # Frontend to'liq URL ni ko'rishi uchun (Railway yoki lokal domenga moslashadi)
-    # API_BASE = "https://uzbekcats-production.up.railway.app" bo'lsa:
-    base_url = "https://uzbekcats-production.up.railway.app" # yoki sozlamadan olinadi
+    # Dinamik URL yaratish (xato tuzatildi)
+    base_url = str(request.base_url).rstrip("/")
     file_url = f"{base_url}/uploads/{safe_name}"
 
     return {"status": "success", "url": file_url}
@@ -452,7 +454,6 @@ async def auth_telegram(req: TelegramAuthRequest):
         raise HTTPException(404, "Foydalanuvchi topilmadi. Botga /start bosing.")
     if user.get("is_banned"):
         raise HTTPException(403, Texts.USER_BANNED)
-
     return {"status": "success", "user_id": user["id"]}
 
 
@@ -474,8 +475,7 @@ async def get_me(user: dict = Depends(get_current_user)):
 
 @app.get("/api/user/ads")
 async def get_my_ads(user: dict = Depends(get_current_user)):
-    ads = await db.get_user_ads(user["id"])
-    return ads
+    return await db.get_user_ads(user["id"])
 
 
 # ==============================================================================
@@ -484,7 +484,6 @@ async def get_my_ads(user: dict = Depends(get_current_user)):
 
 @app.get("/api/ads")
 async def get_active_ads():
-    """Asosiy sahifa uchun faol (Web) reklamalar (public)."""
     try:
         await db.cleanup_expired_ads()
     except Exception as e:
@@ -494,7 +493,6 @@ async def get_active_ads():
 
 @app.get("/api/ads/{ad_id}")
 async def get_ad(ad_id: int):
-    """Bitta reklama haqida (public)."""
     async with db.pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT * FROM ads WHERE id = $1 AND status = 'approved'", ad_id
@@ -506,7 +504,6 @@ async def get_ad(ad_id: int):
 
 @app.post("/api/ads")
 async def create_ad(req: AdCreateRequest, user: dict = Depends(get_current_user)):
-    """Web App orqali yangi reklama yaratish (cats_data va URL rasmlar bilan)."""
     tariff_info = WebAppConfig.TARIFFS.get(req.tariff)
     if not tariff_info:
         raise HTTPException(400, "Noto'g'ri tarif")
@@ -516,18 +513,13 @@ async def create_ad(req: AdCreateRequest, user: dict = Depends(get_current_user)
         raise HTTPException(400, "Bu mushuk soni uchun narx yo'q")
 
     if user["balance"] < price:
-        raise HTTPException(
-            402,
-            Texts.ERROR_INSUFFICIENT_BALANCE.format(price=price, balance=user["balance"]),
-        )
+        raise HTTPException(402, Texts.ERROR_INSUFFICIENT_BALANCE.format(price=price, balance=user["balance"]))
 
-    # Balansdan yechish
     try:
         await db.update_user_balance(user["id"], price, operation="subtract")
     except ValueError:
         raise HTTPException(402, Texts.ERROR_BALANCE_SUBTRACT)
 
-    # Agar cats_data kelmagan bo'lsa, eski usuldan foydalanamiz
     cats_data_list = []
     if req.cats_data:
         cats_data_list = [cat.dict() for cat in req.cats_data]
@@ -540,15 +532,14 @@ async def create_ad(req: AdCreateRequest, user: dict = Depends(get_current_user)
             "sterilization": req.sterilization
         }]
 
-    # Reklama yaratish
     try:
         new_ad = await db.create_ad(
             user_id=user["id"],
             ad_type="sotish",
             tariff=req.tariff,
-            photos=req.photos, # Endi to'g'ridan to'g'ri URL ro'yxati
+            photos=req.photos,
             cats_data=cats_data_list,
-            breed=req.breed, # Eski tizim uchun (asosiy qidiruv)
+            breed=req.breed,
             age=req.age,
             gender=req.gender,
             health=req.health,
@@ -594,7 +585,6 @@ async def delete_my_ad(ad_id: int, user: dict = Depends(get_current_user)):
 
 @app.get("/api/rating")
 async def get_rating():
-    """Top 50 foydalanuvchilar."""
     top_users = await db.get_top_users(limit=50)
     result = []
     for u in top_users:
@@ -691,13 +681,18 @@ async def upload_receipt(
 
     if api_bot:
         try:
+            # Bazadan kartani olish
+            card = await db.get_active_card()
+            card_num = card["number"] if card else "Noma'lum"
+            
             await api_bot.send_message(
                 BotConfig.TECH_ADMIN_ID,
-                f"🧾 <b>Yangi chek!</b>\n\n"
-                f"👤 Foydalanuvchi: #{user['user_number']}\n"
+                f"🧾 <b>Yangi chek (WebApp)!</b>\n\n"
+                f"👤 Foydalanuvchi: #{user['user_number']} ({user['full_name']})\n"
                 f"💰 Summa: {payment['amount']:,} so'm\n"
+                f"💳 Karta: {card_num}\n"
                 f"🆔 To'lov ID: <code>{payment_id}</code>\n\n"
-                f"Tekshirish: WebApp Admin Panel orqali.",
+                f"Admin panel orqali tasdiqlang.",
             )
         except Exception:
             pass
@@ -705,7 +700,7 @@ async def upload_receipt(
     return {
         "status": "success",
         "message": "Chek yuklandi. Admin tasdiqlashini kuting.",
-        "receipt_url": f"https://uzbekcats-production.up.railway.app/uploads/{safe_name}",
+        "receipt_url": f"{str(request.base_url).rstrip('/')}/uploads/{safe_name}",
     }
 
 
@@ -720,7 +715,6 @@ async def admin_stats(admin: dict = Depends(check_admin)):
 
 @app.get("/api/admin/cards")
 async def get_all_cards(admin: dict = Depends(check_admin)):
-    """Admin panel uchun barcha kartalar."""
     return await db.get_all_cards()
 
 
@@ -895,6 +889,7 @@ async def approve_ad(ad_id: int, admin: dict = Depends(check_admin)):
     if ad_data["status"] == "approved": raise HTTPException(400, "Reklama allaqachon tasdiqlangan")
 
     msg_info = None
+    # Faqat kanal tariflarida kanalga yuboriladi
     if ad_data.get("tariff") in ("channel_only", "web_and_channel", "bot"):
         try:
             msg_info = await _post_ad_to_channel(ad_data)
