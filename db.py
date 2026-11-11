@@ -4,6 +4,7 @@
 # TAVSIF: PostgreSQL + asyncpg — to'liq ishchi, xatosiz, barcha metodlar
 # ==============================================================================
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
@@ -23,28 +24,40 @@ logger = logging.getLogger(__name__)
 class Database:
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
+        self._connect_lock = asyncio.Lock()
 
     # ==========================================================================
-    # ULANISH
+    # ULANISH VA JADVALLAR YARATISH
     # ==========================================================================
 
     async def connect(self):
-        """Pool yaratish + jadvallarni tayyorlash (idempotent)."""
+        """Pool yaratish va jadvallarni xavfsiz yaratish."""
         if self.pool is not None:
             return
 
-        dsn = BotConfig.DATABASE_URL
-        if dsn.startswith("postgres://"):
-            dsn = dsn.replace("postgres://", "postgresql://", 1)
+        async with self._connect_lock:
+            if self.pool is not None:
+                return
 
-        self.pool = await asyncpg.create_pool(
-            dsn=dsn,
-            min_size=1,
-            max_size=10,
-            command_timeout=60,
-        )
-        await self._create_tables()
-        logger.info("✅ Database pool tayyor")
+            dsn = BotConfig.DATABASE_URL
+            if dsn.startswith("postgres://"):
+                dsn = dsn.replace("postgres://", "postgresql://", 1)
+
+            try:
+                self.pool = await asyncpg.create_pool(
+                    dsn=dsn,
+                    min_size=1,
+                    max_size=10,
+                    command_timeout=60,
+                )
+                await self._create_tables()
+                logger.info("✅ Database pool tayyor")
+            except Exception as e:
+                logger.error(f"❌ Database ulanish xatosi: {e}")
+                if self.pool is not None:
+                    await self.pool.close()
+                    self.pool = None
+                raise
 
     async def disconnect(self):
         if self.pool is not None:
@@ -53,128 +66,137 @@ class Database:
             logger.info("🔌 Database pool yopildi")
 
     async def _create_tables(self):
-        """Barcha jadvallarni yaratish."""
+        """Jadvallarni yaratish. Advisory Lock bilan UniqueViolationError oldini oladi."""
         async with self.pool.acquire() as conn:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id BIGINT PRIMARY KEY,
-                    user_number SERIAL UNIQUE,
-                    username TEXT,
-                    full_name TEXT,
-                    phone TEXT UNIQUE,
-                    balance BIGINT DEFAULT 0,
-                    score INT DEFAULT 0,
-                    spent BIGINT DEFAULT 0,
-                    ad_count INT DEFAULT 0,
-                    warn_count INT DEFAULT 0,
-                    mute_until TIMESTAMP,
-                    is_banned BOOLEAN DEFAULT FALSE,
-                    is_admin BOOLEAN DEFAULT FALSE,
-                    referred_by BIGINT,
-                    registered_at TIMESTAMP DEFAULT NOW()
-                )
-            """)
+            # Bir vaqtda bir nechta bot ishga tushsa ham xato bermasligi uchun lock
+            await conn.execute("SELECT pg_advisory_lock(123456789)")
+            try:
+                await self._run_ddl(conn)
+            finally:
+                await conn.execute("SELECT pg_advisory_unlock(123456789)")
 
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS ads (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
-                    ad_type TEXT NOT NULL,
-                    tariff TEXT,
-                    photos JSONB DEFAULT '[]'::jsonb,
-                    breed TEXT,
-                    age TEXT,
-                    gender TEXT,
-                    health TEXT,
-                    sterilization TEXT,
-                    address TEXT,
-                    phone TEXT,
-                    price TEXT DEFAULT '0',
-                    currency TEXT DEFAULT 'so''m',
-                    ad_number INT,
-                    cat_count INT DEFAULT 1,
-                    price_paid BIGINT DEFAULT 0,
-                    status TEXT DEFAULT 'pending',
-                    reject_reason TEXT,
-                    channel_message_id BIGINT,
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    expires_at TIMESTAMP
-                )
-            """)
+    async def _run_ddl(self, conn):
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id BIGINT PRIMARY KEY,
+                user_number SERIAL UNIQUE,
+                username TEXT,
+                full_name TEXT,
+                phone TEXT UNIQUE,
+                balance BIGINT DEFAULT 0,
+                score INT DEFAULT 0,
+                spent BIGINT DEFAULT 0,
+                ad_count INT DEFAULT 0,
+                warn_count INT DEFAULT 0,
+                mute_until TIMESTAMP,
+                is_banned BOOLEAN DEFAULT FALSE,
+                is_admin BOOLEAN DEFAULT FALSE,
+                referred_by BIGINT,
+                registered_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
 
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS payments (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
-                    amount BIGINT NOT NULL,
-                    card_id INT,
-                    card_last4 TEXT,
-                    receipt_file_id TEXT,
-                    status TEXT DEFAULT 'pending',
-                    userbot_matched BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    expires_at TIMESTAMP
-                )
-            """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ads (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                ad_type TEXT NOT NULL,
+                tariff TEXT,
+                photos JSONB DEFAULT '[]'::jsonb,
+                breed TEXT,
+                age TEXT,
+                gender TEXT,
+                health TEXT,
+                sterilization TEXT,
+                address TEXT,
+                phone TEXT,
+                price TEXT DEFAULT '0',
+                currency TEXT DEFAULT 'so''m',
+                ad_number INT,
+                cat_count INT DEFAULT 1,
+                price_paid BIGINT DEFAULT 0,
+                status TEXT DEFAULT 'pending',
+                reject_reason TEXT,
+                channel_message_id BIGINT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP
+            )
+        """)
 
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS cards (
-                    id SERIAL PRIMARY KEY,
-                    number TEXT NOT NULL,
-                    holder TEXT NOT NULL,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMP DEFAULT NOW()
-                )
-            """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS payments (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                amount BIGINT NOT NULL,
+                card_id INT,
+                card_last4 TEXT,
+                receipt_file_id TEXT,
+                status TEXT DEFAULT 'pending',
+                userbot_matched BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP
+            )
+        """)
 
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT
-                )
-            """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS cards (
+                id SERIAL PRIMARY KEY,
+                number TEXT NOT NULL,
+                holder TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
 
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS userbot_sessions (
-                    id SERIAL PRIMARY KEY,
-                    phone TEXT,
-                    session_string TEXT NOT NULL,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    added_at TIMESTAMP DEFAULT NOW()
-                )
-            """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
 
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS referrals (
-                    id SERIAL PRIMARY KEY,
-                    referrer_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
-                    referred_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-                    created_at TIMESTAMP DEFAULT NOW()
-                )
-            """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS userbot_sessions (
+                id SERIAL PRIMARY KEY,
+                phone TEXT,
+                session_string TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                added_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
 
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS userbot_payments (
-                    id SERIAL PRIMARY KEY,
-                    amount BIGINT,
-                    last4 TEXT,
-                    matched_user_id BIGINT,
-                    matched BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT NOW()
-                )
-            """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS referrals (
+                id SERIAL PRIMARY KEY,
+                referrer_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                referred_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
 
-            # Indekslar
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads(user_id)")
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status)")
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_tariff ON ads(tariff)")
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id)")
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_score ON users(score DESC)")
-            logger.info("✅ Jadvallar tayyor")
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS userbot_payments (
+                id SERIAL PRIMARY KEY,
+                amount BIGINT,
+                last4 TEXT,
+                matched_user_id BIGINT,
+                matched BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
+
+        # Indekslar
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads(user_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_tariff ON ads(tariff)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_score ON users(score DESC)")
+
+        logger.info("✅ Jadvallar tayyor")
 
     # ==========================================================================
-    # YORDAMCHI
+    # YORDAMCHI FUNKSIYALAR
     # ==========================================================================
 
     @staticmethod
@@ -223,12 +245,10 @@ class Database:
         phone: str,
         referral_code: Optional[str] = None,
     ) -> dict:
-        # Telefonni normallashtirish
         phone = phone.strip()
         if not phone.startswith("+"):
             phone = "+" + phone
 
-        # Referral code: "REF123456" -> referrer_id = 123456
         referrer_id = None
         if referral_code and isinstance(referral_code, str) and referral_code.startswith("REF"):
             try:
@@ -240,7 +260,6 @@ class Database:
 
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                # Agar user allaqachon mavjud bo'lsa — qaytaramiz (race condition)
                 existing_id = await conn.fetchval(
                     "SELECT id FROM users WHERE id = $1", telegram_id
                 )
@@ -248,14 +267,12 @@ class Database:
                     row = await conn.fetchrow("SELECT * FROM users WHERE id = $1", telegram_id)
                     return dict(row)
 
-                # Telefon band emasligini tekshirish
                 phone_taken = await conn.fetchval(
                     "SELECT id FROM users WHERE phone = $1", phone
                 )
                 if phone_taken:
                     raise ValueError("Bu telefon raqam boshqa foydalanuvchiga tegishli!")
 
-                # Referrer mavjudligini tekshirish
                 if referrer_id:
                     exists = await conn.fetchval(
                         "SELECT 1 FROM users WHERE id = $1", referrer_id
@@ -273,7 +290,6 @@ class Database:
                 )
                 user = dict(row)
 
-                # Referral ball
                 if referrer_id:
                     try:
                         await conn.execute(
@@ -627,7 +643,6 @@ class Database:
             )
 
     async def match_userbot_payment(self, amount: int, last4: str) -> Optional[int]:
-        """Userbot orqali kelgan to'lovni pending to'lov bilan moslashtirish."""
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 row = await conn.fetchrow(
@@ -702,11 +717,10 @@ class Database:
         }
 
     # ==========================================================================
-    # YORDAMCHI: RESET (faqat qo'lda, ehtiyotkorlik bilan!)
+    # RESET (Ehtiyotkorlik bilan ishlatiladi)
     # ==========================================================================
 
     async def reset_tables(self):
-        """⚠️ DIQQAT: Barcha ma'lumotlarni o'chiradi va jadvallarni qayta yaratadi."""
         if self.pool is None:
             raise RuntimeError("Pool yaratilmagan. Avval connect() chaqiring.")
         async with self.pool.acquire() as conn:
@@ -718,11 +732,7 @@ class Database:
         await self._create_tables()
         logger.warning("⚠️ Barcha jadvallar qayta yaratildi (ma'lumotlar o'chirildi)")
 
-
 # ==============================================================================
 # MODUL DARAJASIDA YAGONA INSTANSIYA
-# ==============================================================================
-# Bot.py va api.py shu yerdan `from db import db` qilib import qiladi.
-# Bu qator AYNAN fayl oxirida bo'lishi shart — circular import bo'lmasligi uchun.
 # ==============================================================================
 db = Database()
