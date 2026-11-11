@@ -24,6 +24,7 @@ from aiogram.types import (
     ChatPermissions
 )
 
+# Telethon (Userbot uchun)
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
@@ -66,6 +67,40 @@ async def safe_edit_text(message: Message, text: str, reply_markup=None):
 async def safe_delete(message: Message):
     try: await message.delete()
     except: pass
+
+# =====================================================================
+# USERBOT LOGIKASI (QAYTA QO'SHILDI)
+# =====================================================================
+async def start_userbot(session_string: str):
+    global userbot_client
+    try:
+        if userbot_client and userbot_client.is_connected():
+            await userbot_client.disconnect()
+        userbot_client = TelegramClient(
+            StringSession(session_string),
+            api_id=UserbotConfig.API_ID,
+            api_hash=UserbotConfig.API_HASH,
+        )
+        await userbot_client.start()
+        logger.info("✅ Userbot ishga tushdi")
+
+        @userbot_client.on(events.NewMessage(chats=UserbotConfig.TARGET_BOT))
+        async def handler(event):
+            text = event.message.text or ""
+            m = re.search(UserbotConfig.CARD_TRANSFER_REGEX, text)
+            if not m:
+                return
+            amount = int(m.group(1).replace(" ", ""))
+            last4 = m.group(2)
+            user_id = await db.match_userbot_payment(amount, last4)
+            if user_id:
+                logger.info(f"✅ To'lov: {amount} UZS → user {user_id}")
+                try:
+                    await bot.send_message(user_id, Texts.TOPUP_PAID.format(amount=amount))
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.error(f"❌ Userbot xatosi: {e}")
 
 # =====================================================================
 # MAJBURIY OBUNA
@@ -630,14 +665,13 @@ async def process_price(message: Message, state: FSMContext):
     await send_ad_preview(message, state)
 
 # =====================================================================
-# PREVIEW (QAVSLAR TO'LIQ TO'G'RILANDI)
+# PREVIEW
 # =====================================================================
 async def send_ad_preview(message: Message, state: FSMContext):
     data = await state.get_data()
     user = await db.get_user(message.from_user.id if message.from_user else message.chat.id)
     price = data.get("bot_price", 0)
     
-    # O'zgaruvchilarni alohida olamiz (xato bo'lmasligi uchun)
     address_safe = html_escape(str(data.get('address') or '—'))
     phone_safe = html_escape(str(data.get('phone') or '—'))
     price_safe = html_escape(str(data.get('price') or '0'))
@@ -700,7 +734,6 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     await safe_delete(call.message)
     await bot.send_message(call.from_user.id, Texts.AD_ACCEPTED)
 
-    # Admin xabari uchun o'zgaruvchilar
     u_name_safe = html_escape(user['username'] or '—')
     ad_type_upper = str(data.get('ad_type')).upper()
     b_safe = html_escape(str(data.get('breed') or '—'))
@@ -786,7 +819,7 @@ async def process_decline_reason(message: Message, state: FSMContext):
     await state.clear()
 
 # =====================================================================
-# ADMIN: E'LONNI TAHRIRLASH (EDIT) (QAVSLAR TO'G'RILANDI)
+# ADMIN: E'LONNI TAHRIRLASH (EDIT)
 # =====================================================================
 @router.callback_query(F.data.startswith("admin_edit_ad_"))
 async def admin_edit_ad_menu(call: CallbackQuery, state: FSMContext):
@@ -822,7 +855,6 @@ async def admin_edit_value_save(message: Message, state: FSMContext):
     
     ad = await db.get_ad(ad_id)
     
-    # O'zgaruvchilar
     u_id = ad['user_id']
     b_safe = html_escape(str(ad.get('breed') or '—'))
     a_safe = html_escape(str(ad.get('age') or '—'))
@@ -857,7 +889,7 @@ async def admin_cancel_edit(call: CallbackQuery, state: FSMContext):
     await state.clear()
 
 # =====================================================================
-# ADMIN PANEL (Qolgan funksiyalar)
+# ADMIN PANEL
 # =====================================================================
 @router.callback_query(F.data == "admin_panel")
 async def admin_panel(call: CallbackQuery):
@@ -940,6 +972,15 @@ async def on_startup():
     try: await bot.set_my_commands([BotCommand(command="start", description="Botni ishga tushirish")])
     except: pass
     logger.info("🚀 Bot polling boshlandi")
+
+    # Userbotni ishga tushirish
+    try:
+        async with db.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT session_string FROM userbot_sessions WHERE is_active = TRUE LIMIT 1")
+        if row and row["session_string"]:
+            await start_userbot(row["session_string"])
+    except Exception as e:
+        logger.warning(f"Userbot yuklashda xato: {e}")
 
 @dp.shutdown()
 async def on_shutdown():
