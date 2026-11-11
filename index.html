@@ -19,7 +19,7 @@
 
     <style>
         /* ==========================================================================
-           1. GLOBAL O'ZGARUVCHILAR VA SOZLAMALAR
+           1. GLOBAL O'ZGARUVCHILAR VA SOZLAMALAR (PREMIUM DIZAYN)
            ========================================================================== */
         *, *::before, *::after { 
             margin: 0; 
@@ -590,6 +590,26 @@
         .wizard-step { display: none; animation: fadeIn 0.3s ease; }
         .wizard-step.active { display: block; }
 
+        /* Custom Grid Options (Select o'rniga) */
+        .option-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; max-height: 250px; overflow-y: auto; margin-bottom: 16px; padding-right: 4px;}
+        .option-grid::-webkit-scrollbar { width: 4px; }
+        .option-grid::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 4px; }
+        .option-btn { 
+            padding: 12px; 
+            border-radius: 12px; 
+            background: var(--surface-2); 
+            border: 1px solid var(--border); 
+            font-size: 13px; 
+            font-weight: 700; 
+            text-align: left;
+            transition: 0.2s;
+        }
+        .option-btn:active, .option-btn.selected { 
+            background: rgba(59,130,246,0.1); 
+            border-color: var(--blue); 
+            color: var(--blue);
+        }
+
         .tariff-card { 
             padding: 20px; 
             border-radius: 16px; 
@@ -606,16 +626,28 @@
         .tariff-features li { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
         .tariff-features i { color: var(--green); width: 14px; }
 
-        .file-upload { 
+        /* Rasm Yuklash (Wizard Step 3) */
+        .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+        .photo-box { 
+            position: relative; 
+            aspect-ratio: 1/1; 
+            border-radius: 12px; 
+            overflow: hidden; 
+            background: var(--surface-2); 
             border: 2px dashed var(--border); 
-            border-radius: 16px; 
-            padding: 30px; 
-            text-align: center; 
-            color: var(--text-3); 
-            cursor: pointer; 
-            transition: 0.2s; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            cursor: pointer;
         }
-        .file-upload:active { background: var(--surface-2); }
+        .photo-box img { width: 100%; height: 100%; object-fit: cover; }
+        .photo-box .delete-btn { 
+            position: absolute; top: 4px; right: 4px; 
+            width: 24px; height: 24px; border-radius: 50%; 
+            background: rgba(0,0,0,0.5); color: #fff; 
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; backdrop-filter: blur(4px);
+        }
 
         /* TOPUP PREMIUM */
         .topup-amount-box { text-align: center; margin: 20px 0; position: relative; }
@@ -683,6 +715,8 @@
                 <button class="btn-topup" onclick="UI.showPage('p-topup')">+ To'ldirish</button>
             </div>
 
+            <!-- Qidiruv olib tashlandi (Sizning talabingizga ko'ra) -->
+            
             <div class="tabs">
                 <button class="tab active" onclick="Dashboard.setFilter('all', this)"><i data-feather="grid"></i> Hammasi</button>
                 <button class="tab" onclick="Dashboard.setFilter('new', this)"><i data-feather="clock"></i> Yangi (24 soat)</button>
@@ -721,7 +755,7 @@
         </div>
 
         <!-- =====================================================================
-             PAGE: TOPUP (HISOB TO'LDIRISH)
+             PAGE: TOPUP (HISOB TO'LDIRISH) - YANGI PREMIUM DIZAYN
              ===================================================================== -->
         <div class="page" id="p-topup">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
@@ -774,7 +808,7 @@
         </div>
 
         <!-- =====================================================================
-             PAGE: CREATE AD (REKLAMA BERISH WIZARD)
+             PAGE: CREATE AD (REKLAMA BERISH WIZARD) - MUKAMMAL DIZAYN
              ===================================================================== -->
         <div class="page" id="p-create">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
@@ -796,64 +830,62 @@
                 </div>
             </div>
 
-            <!-- Step 2: Tariff -->
+            <!-- Step 2: Tariff (Bosganda avtomatik o'tadi) -->
             <div class="wizard-step" id="w-step-2">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Tarifni tanlang</h3>
                 <div id="tariff-list"></div>
-                <button class="btn btn-primary" onclick="CreateAd.checkBalance()" style="margin-top: 16px;">Davom etish</button>
             </div>
 
-            <!-- Step 3: Media -->
+            <!-- Step 3: Media (1-3 ta rasm, o'chirish imkoniyati bilan) -->
             <div class="wizard-step" id="w-step-3">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Rasm yuklang (1-3 ta)</h3>
-                <label class="file-upload" style="display: block; margin-bottom: 16px;">
+                
+                <div class="photo-grid" id="uploaded-photos">
+                    <!-- JS tomonidan rasmlar qo'shiladi -->
+                </div>
+
+                <label class="file-upload" id="upload-label" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
                     <i data-feather="camera" style="width:32px; height:32px; margin-bottom: 8px; color: var(--blue);"></i>
-                    <div style="font-weight: 700; color: var(--text);">Rasm tanlang</div>
+                    <div style="font-weight: 700; color: var(--text);">Rasm qo'shish</div>
                     <input type="file" accept="image/*" multiple style="display: none;" onchange="CreateAd.handleFiles(this)">
                 </label>
-                <div id="preview-box" class="grid-2" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 16px;"></div>
-                <button class="btn btn-primary" onclick="CreateAd.nextStep(4)">Davom etish</button>
+
+                <button class="btn btn-primary" onclick="CreateAd.nextStep(4)" style="margin-top: 16px;">Davom etish</button>
             </div>
 
-            <!-- Step 4: Cat Details (Dynamic) -->
+            <!-- Step 4: Cat Details (Dinamik, Tugmalar orqali) -->
             <div class="wizard-step" id="w-step-4">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;" id="cat-detail-title">1-mushuk ma'lumotlari</h3>
+                
                 <div class="card" style="padding: 20px; margin-bottom: 16px;">
                     <div class="input-group">
                         <label class="label">Zoti</label>
-                        <select class="input" id="c-breed">
-                            <option value="British Shorthair">British Shorthair</option>
-                            <option value="Scottish Fold">Scottish Fold</option>
-                            <option value="Bengal">Bengal</option>
-                            <option value="Maine Coon">Maine Coon</option>
-                            <option value="Ragdoll">Ragdoll</option>
-                            <option value="Uy mushuki">Uy mushuki</option>
-                        </select>
+                        <div class="option-grid" id="c-breed-grid">
+                            <!-- JS orqali tugmalar chiqariladi -->
+                        </div>
                     </div>
+
                     <div class="input-group">
                         <label class="label">Yoshi</label>
-                        <select class="input" id="c-age">
-                            <option value="1 oylik">1 oylik</option>
-                            <option value="2 oylik">2 oylik</option>
-                            <option value="3 oylik">3 oylik</option>
-                            <option value="6 oylik">6 oylik</option>
-                            <option value="1 yosh">1 yosh</option>
-                            <option value="2 yosh">2 yosh</option>
-                        </select>
+                        <div class="option-grid" id="c-age-grid">
+                            <!-- JS orqali tugmalar chiqariladi -->
+                        </div>
                     </div>
+
                     <div class="input-group">
                         <label class="label">Jinsi</label>
-                        <select class="input" id="c-gender">
-                            <option value="Erkak">Erkak</option>
-                            <option value="Urg'ochi">Urg'ochi</option>
-                        </select>
+                        <div class="option-grid" id="c-gender-grid" style="grid-template-columns: 1fr 1fr;">
+                            <button class="option-btn" onclick="CreateAd.selectOption('gender', 'Erkak', this)">Erkak</button>
+                            <button class="option-btn" onclick="CreateAd.selectOption('gender', 'Urg\'ochi', this)">Urg'ochi</button>
+                        </div>
                     </div>
+
                     <div class="input-group">
                         <label class="label">Sog'lig'i</label>
-                        <select class="input" id="c-health">
-                            <option value="Sog'lom">Sog'lom</option>
-                            <option value="Kasal">Kasal</option>
-                        </select>
+                        <div class="option-grid" id="c-health-grid" style="grid-template-columns: 1fr 1fr;">
+                            <button class="option-btn" onclick="CreateAd.selectOption('health', 'Sog\'lom', this)">Sog'lom</button>
+                            <button class="option-btn" onclick="CreateAd.selectOption('health', 'Kasal', this)">Kasal</button>
+                        </div>
                     </div>
                 </div>
                 <button class="btn btn-primary" onclick="CreateAd.saveCat()">Keyingisi</button>
@@ -862,17 +894,14 @@
             <!-- Step 5: Location & Contact -->
             <div class="wizard-step" id="w-step-5">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Manzil va Aloqa</h3>
+                
                 <div class="input-group">
                     <label class="label">Viloyat/Shahar</label>
-                    <select class="input" id="ad-address">
-                        <option value="Toshkent">Toshkent</option>
-                        <option value="Samarqand">Samarqand</option>
-                        <option value="Buxoro">Buxoro</option>
-                        <option value="Andijon">Andijon</option>
-                        <option value="Farg'ona">Farg'ona</option>
-                        <option value="Namangan">Namangan</option>
-                    </select>
+                    <div class="option-grid" id="c-region-grid">
+                        <!-- JS orqali tugmalar chiqariladi -->
+                    </div>
                 </div>
+
                 <div class="input-group">
                     <label class="label">Telefon raqam</label>
                     <input type="text" class="input" id="ad-phone" placeholder="+998 90 123 45 67" value="+998">
@@ -893,8 +922,8 @@
                 <div class="input-group">
                     <label class="label">Valyuta</label>
                     <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-outline" id="btn-uzs" onclick="CreateAd.setCurrency('so\'m', this)">So'm</button>
-                        <button class="btn btn-outline" id="btn-usd" onclick="CreateAd.setCurrency('$', this)">Dollar ($)</button>
+                        <button class="btn btn-outline" id="btn-uzs" onclick="CreateAd.setCurrency('so\'m', this)">🇺🇿 So'm</button>
+                        <button class="btn btn-outline" id="btn-usd" onclick="CreateAd.setCurrency('$', this)">🇺🇸 Dollar ($)</button>
                     </div>
                 </div>
                 <div class="input-group">
@@ -1111,12 +1140,12 @@
         const TARIFFS = {
             'web_only': { 
                 name: 'Web App faqat', 
-                desc: 'Botning asosiy sahifasida chiqadi',
+                desc: 'Botning asosiy sahifasida chiqadi (7 kun)',
                 prices: {1:10000, 2:18000, 3:25000, 4:31000, 5:38000} 
             },
             'channel_only': { 
                 name: 'Kanal faqat', 
-                desc: 'Faqat kanalga post qilinadi',
+                desc: 'Faqat kanalga post qilinadi (Umrbod)',
                 prices: {1:25000, 2:45000, 3:65000, 4:85000, 5:105000} 
             },
             'web_and_channel': { 
@@ -1125,6 +1154,31 @@
                 prices: {1:32000, 2:50000, 3:75000, 4:95000, 5:110000} 
             }
         };
+
+        // Zotlar, Yoshlar, Viloyatlar (Tugmalar uchun)
+        const BREEDS_LIST = [
+            "Scottish fold", "Scottish straight", "British blue", "British chinchilla",
+            "Bengal cat", "Turkish angora", "Scottish chinchila", "Gibrid", 
+            "British Shorthair", "British Longhair", "Persian Cat", "Maine Coon", 
+            "Ragdoll", "Siberian Cat", "Russian blue", "Abyssinian", 
+            "Norwegian Forest Cat", "Turkish Van", "Burmilla", "American Shorthair", 
+            "American Curl", "Egyptian Mau", "Tonkinese", "Balinese", 
+            "Exotic Shorthair", "Savannah Cat", "Munchkin", "Khao Manee", 
+            "Uy mushuki", "Boshqa"
+        ];
+
+        const AGES_LIST = [
+            "1 oylik", "2 oylik", "3 oylik", "4 oylik", "5 oylik",
+            "6 oylik", "7 oylik", "8 oylik", "9 oylik", "10 oylik",
+            "11 oylik", "1 yosh", "1,5 yosh", "2 yosh", "2,5 yosh",
+            "3 yosh", "3,5 yosh", "4 yosh", "4,5 yosh", "5 yosh"
+        ];
+
+        const REGIONS_LIST = [
+            "Toshkent shahar", "Toshkent viloyati", "Andijon", "Buxoro", 
+            "Farg'ona", "Jizzax", "Xorazm", "Namangan", "Navoiy", 
+            "Qashqadaryo", "Samarqand", "Sirdaryo", "Surxondaryo", "Qoraqalpog'iston"
+        ];
 
         let STATE = { 
             user: null, 
@@ -1142,7 +1196,12 @@
                 phone: '', 
                 username: '', 
                 price: '', 
-                currency: "so'm"
+                currency: "so'm",
+                // Vaqtinchalik ma'lumotlar
+                tempBreed: '',
+                tempAge: '',
+                tempGender: '',
+                tempHealth: ''
             }
         };
 
@@ -1175,21 +1234,6 @@
                         '"': '&quot;'
                     }[tag] || tag)
                 ) : '';
-            },
-            showSkeleton(containerId, count = 2) {
-                const el = $(containerId);
-                if (!el) return;
-                let html = '';
-                for (let i = 0; i < count; i++) {
-                    html += `
-                        <div style="margin-bottom: 12px;">
-                            <div class="skeleton skeleton-img" style="height: 120px; margin-bottom: 8px;"></div>
-                            <div class="skeleton skeleton-text"></div>
-                            <div class="skeleton skeleton-text" style="width: 50%;"></div>
-                        </div>
-                    `;
-                }
-                el.innerHTML = html;
             }
         };
 
@@ -1214,6 +1258,9 @@
                     document.documentElement.setAttribute('data-theme', 'dark');
                     $('btn-theme').innerHTML = '<i data-feather="moon"></i>';
                 }
+
+                // Tugmalarni yaratish
+                this.renderStaticOptions();
 
                 feather.replace();
                 this.loadData();
@@ -1269,8 +1316,10 @@
 
                     $('h-name').innerText = STATE.user.full_name || "Foydalanuvchi";
                     
-                    const avatarHtml = STATE.user.photo_url 
-                        ? `<img src="${STATE.user.photo_url}">` 
+                    // Telegram rasmni tekshirish
+                    const tgPhoto = tg?.initDataUnsafe?.user?.photo_url;
+                    const avatarHtml = tgPhoto 
+                        ? `<img src="${tgPhoto}">` 
                         : (STATE.user.full_name || "U")[0];
                     $('h-avatar').innerHTML = avatarHtml;
 
@@ -1290,6 +1339,26 @@
                     console.error(e);
                     this.toast("Server bilan aloqa yo'q", "error");
                 }
+            },
+
+            renderStaticOptions() {
+                // Zotlar
+                const breedGrid = $('c-breed-grid');
+                breedGrid.innerHTML = BREEDS_LIST.map(b => 
+                    `<button class="option-btn" onclick="CreateAd.selectOption('breed', '${b}', this)">${b}</button>`
+                ).join('');
+
+                // Yoshlar
+                const ageGrid = $('c-age-grid');
+                ageGrid.innerHTML = AGES_LIST.map(a => 
+                    `<button class="option-btn" onclick="CreateAd.selectOption('age', '${a}', this)">${a}</button>`
+                ).join('');
+
+                // Viloyatlar
+                const regionGrid = $('c-region-grid');
+                regionGrid.innerHTML = REGIONS_LIST.map(r => 
+                    `<button class="option-btn" onclick="CreateAd.selectOption('region', '${r}', this)">${r}</button>`
+                ).join('');
             }
         };
 
@@ -1579,7 +1648,24 @@
         // ==========================================================================
         const CreateAd = {
             reset() {
-                STATE.adState = { step: 1, cat_count: 1, tariff: '', photos: [], cats: [], currentCatIndex: 0, address: '', phone: '', username: '', price: '', currency: "so'm" };
+                STATE.adState = { 
+                    step: 1, 
+                    cat_count: 1, 
+                    tariff: '', 
+                    photos: [], 
+                    cats: [], 
+                    currentCatIndex: 0, 
+                    address: '', 
+                    phone: '', 
+                    username: '', 
+                    price: '', 
+                    currency: "so'm",
+                    tempBreed: '',
+                    tempAge: '',
+                    tempGender: '',
+                    tempHealth: ''
+                };
+                $('uploaded-photos').innerHTML = '';
                 this.nextStep(1);
                 UI.showPage('p-create');
                 Utils.haptic('medium');
@@ -1591,7 +1677,15 @@
                 $('w-progress').style.width = `${(step/7)*100}%`;
 
                 if(step === 2) this.renderTariffs();
-                if(step === 4) this.renderCatForm();
+                if(step === 4) {
+                    this.renderCatForm();
+                    // Reset temp options
+                    STATE.adState.tempBreed = '';
+                    STATE.adState.tempAge = '';
+                    STATE.adState.tempGender = '';
+                    STATE.adState.tempHealth = '';
+                    document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+                }
             },
             setCount(count) {
                 STATE.adState.cat_count = count;
@@ -1626,6 +1720,9 @@
                 document.querySelectorAll('.tariff-card').forEach(c => c.classList.remove('selected'));
                 el.classList.add('selected');
                 Utils.haptic('light');
+                
+                // Tarifni tanlashi bilan keyingi qadamga avtomatik o'tish (Sizning talabingizga ko'ra)
+                setTimeout(() => this.nextStep(3), 200);
             },
             checkBalance() {
                 if(!STATE.adState.tariff) return UI.toast("Tarifni tanlang!", "error");
@@ -1637,34 +1734,84 @@
                 this.nextStep(3);
             },
             handleFiles(input) {
-                if (input.files.length > 3) return UI.toast("Maksimal 3 ta rasm!", "error");
-                STATE.adState.photos = Array.from(input.files);
-                const box = $('preview-box');
-                box.innerHTML = '';
-                STATE.adState.photos.forEach(file => {
+                const files = Array.from(input.files);
+                if (STATE.adState.photos.length + files.length > 3) {
+                    return UI.toast("Maksimal 3 ta rasm yuklash mumkin!", "error");
+                }
+                
+                files.forEach(file => {
                     const reader = new FileReader();
                     reader.onload = (e) => {
-                        box.innerHTML += `<img src="${e.target.result}" style="width:100%; height:80px; object-fit:cover; border-radius:8px;">`;
+                        STATE.adState.photos.push({ file, base64: e.target.result });
+                        this.renderPhotos();
                     };
                     reader.readAsDataURL(file);
                 });
+                
+                input.value = ''; // Reset input
+            },
+            renderPhotos() {
+                const grid = $('uploaded-photos');
+                grid.innerHTML = STATE.adState.photos.map((p, i) => `
+                    <div class="photo-box">
+                        <img src="${p.base64}">
+                        <div class="delete-btn" onclick="CreateAd.removePhoto(${i})"><i data-feather="x" style="width:14px; height:14px;"></i></div>
+                    </div>
+                `).join('');
+
+                // Rasm soni 3 taga yetsa yuklash qutisini yashirish
+                if(STATE.adState.photos.length >= 3) {
+                    $('upload-label').style.display = 'none';
+                } else {
+                    $('upload-label').style.display = 'flex';
+                }
+                feather.replace();
+            },
+            removePhoto(index) {
+                STATE.adState.photos.splice(index, 1);
+                this.renderPhotos();
+                Utils.haptic('light');
+            },
+            selectOption(field, value, btn) {
+                if(field === 'breed') STATE.adState.tempBreed = value;
+                if(field === 'age') STATE.adState.tempAge = value;
+                if(field === 'gender') STATE.adState.tempGender = value;
+                if(field === 'health') STATE.adState.tempHealth = value;
+                if(field === 'region') STATE.adState.address = value;
+
+                // Bir guruhdagi boshqalarni o'chirish
+                const parent = btn.parentElement;
+                parent.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                Utils.haptic('light');
             },
             renderCatForm() {
                 const idx = STATE.adState.currentCatIndex;
                 $('cat-detail-title').innerText = `${idx + 1}-mushuk ma'lumotlari`;
             },
             saveCat() {
+                if(!STATE.adState.tempBreed) return UI.toast("Zotni tanlang!", "error");
+                if(!STATE.adState.tempAge) return UI.toast("Yoshni tanlang!", "error");
+                if(!STATE.adState.tempGender) return UI.toast("Jinsni tanlang!", "error");
+                if(!STATE.adState.tempHealth) return UI.toast("Sog'lig'ini tanlang!", "error");
+
                 const cat = {
-                    breed: $('c-breed').value,
-                    age: $('c-age').value,
-                    gender: $('c-gender').value,
-                    health: $('c-health').value
+                    breed: STATE.adState.tempBreed,
+                    age: STATE.adState.tempAge,
+                    gender: STATE.adState.tempGender,
+                    health: STATE.adState.tempHealth
                 };
                 STATE.adState.cats.push(cat);
                 STATE.adState.currentCatIndex++;
 
                 if(STATE.adState.currentCatIndex < STATE.adState.cat_count) {
                     this.renderCatForm();
+                    // Reset selections
+                    STATE.adState.tempBreed = '';
+                    STATE.adState.tempAge = '';
+                    STATE.adState.tempGender = '';
+                    STATE.adState.tempHealth = '';
+                    document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
                     Utils.haptic('light');
                 } else {
                     this.nextStep(5);
@@ -1682,19 +1829,26 @@
                 STATE.adState.currency = curr;
                 document.querySelectorAll('#w-step-6 .btn-outline').forEach(b => b.style.borderColor = 'var(--border)');
                 btn.style.borderColor = 'var(--blue)';
+                
+                const priceInput = $('ad-price');
+                if(curr === 'so\'m') {
+                    priceInput.placeholder = "1500000";
+                } else {
+                    priceInput.placeholder = "150";
+                }
                 Utils.haptic('light');
             },
             preview() {
                 const phone = $('ad-phone').value;
                 const username = $('ad-username').value;
-                const address = $('ad-address').value;
                 const price = $('ad-price').value;
 
-                if(!phone || !price) return UI.toast("Maydonlarni to'ldiring!", "error");
+                if(!STATE.adState.address) return UI.toast("Manzilni tanlang!", "error");
+                if(!phone || phone.length < 9) return UI.toast("Telefon raqamni kiriting!", "error");
+                if(!price) return UI.toast("Narxni kiriting!", "error");
 
                 STATE.adState.phone = phone;
                 STATE.adState.username = username;
-                STATE.adState.address = address;
                 STATE.adState.price = price;
 
                 const tariffName = TARIFFS[STATE.adState.tariff].name;
@@ -1703,7 +1857,7 @@
                 $('preview-data').innerHTML = `
                     <div style="font-size: 13px; color: var(--text-3); margin-bottom: 8px;">Tarif: <b style="color:var(--blue)">${tariffName}</b></div>
                     <div style="font-size: 15px; font-weight: 700; margin-bottom: 8px;">${STATE.adState.cat_count} ta mushuk</div>
-                    <div style="font-size: 13px; margin-bottom: 4px;">📍 ${Utils.escapeHTML(address)}</div>
+                    <div style="font-size: 13px; margin-bottom: 4px;">📍 ${Utils.escapeHTML(STATE.adState.address)}</div>
                     <div style="font-size: 13px; margin-bottom: 4px;">📞 ${Utils.escapeHTML(phone)} ${username ? '('+Utils.escapeHTML(username)+')' : ''}</div>
                     <div style="font-size: 18px; font-weight: 800; color: var(--blue); margin-top: 12px;">${num(price)} ${STATE.adState.currency}</div>
                     <hr style="border-color: var(--border); margin: 12px 0;">
@@ -1736,7 +1890,7 @@
                 formData.append('price', STATE.adState.price);
                 formData.append('currency', STATE.adState.currency);
                 
-                STATE.adState.photos.forEach(file => formData.append('photos', file));
+                STATE.adState.photos.forEach(p => formData.append('photos', p.file));
 
                 try {
                     const res = await fetch(`${API_BASE}/ads`, {
