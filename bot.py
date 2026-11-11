@@ -8,12 +8,13 @@ import asyncio
 import json
 import logging
 import re
+from datetime import datetime, timedelta
 from html import escape as html_escape
 
 from aiogram import Bot, Dispatcher, F, Router, types
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode, ChatMemberStatus
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -129,7 +130,6 @@ class AdminStates(StatesGroup):
     add_score_batch = State()
     decline_reason = State()
     tech_block_user = State()
-    # Admin Edit uchun
     editing_ad_field = State()
     editing_ad_value = State()
 
@@ -195,16 +195,14 @@ def get_breed_kb(page: int = 0) -> InlineKeyboardMarkup:
 def get_age_kb() -> InlineKeyboardMarkup:
     kb, row = [], []
     for age in DataLists.AGES:
-        cb = age.replace(" ", "_").replace(",", "") # 2,5 yosh -> 25 yosh xatosini oldini olish uchun
+        cb = age.replace(" ", "_").replace(",", "") 
         row.append(InlineKeyboardButton(text=age, callback_data=f"age_{cb}"))
         if len(row) == 3: kb.append(row); row = []
     if row: kb.append(row)
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 def get_simple_kb(options: list, prefix: str) -> InlineKeyboardMarkup:
-    kb = []
-    for text, val in options:
-        kb.append([InlineKeyboardButton(text=text, callback_data=f"{prefix}_{val}")])
+    kb = [[InlineKeyboardButton(text=text, callback_data=f"{prefix}_{val}")] for text, val in options]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 # =====================================================================
@@ -220,7 +218,8 @@ async def post_to_channel(ad_data: dict):
     address = html_escape(str(ad_data.get("address") or "—"))
     phone = html_escape(str(ad_data.get("phone") or "—"))
     price = html_escape(str(ad_data.get("price") or "0"))
-    currency = html_escape(str(ad_data.get("currency") or "so'm"))
+    currency_raw = str(ad_data.get("currency") or "so'm")
+    currency = html_escape(currency_raw)
 
     footer = (
         '👤 <a href="https://t.me/zayd_catlover">Admin</a>\n'
@@ -272,7 +271,6 @@ async def check_user_middleware(handler, event: Message, data: dict):
     if user and user.get("is_banned"):
         await event.answer(Texts.USER_BANNED); return
     
-    # Mute tekshiruvi
     if await db.check_mute(user_id):
         await event.answer("❌ Siz vaqtincha yozish huquqidan mahrum qilingansiz. (24 soat)"); return
 
@@ -281,7 +279,7 @@ async def check_user_middleware(handler, event: Message, data: dict):
 dp.message.middleware(check_user_middleware)
 
 # =====================================================================
-# TAQIQLANGAN SO'ZLAR (Guruhlar uchun) va OGOOHLANTIRISH
+# TAQIQLANGAN SO'ZLAR (Guruhlar uchun)
 # =====================================================================
 @router.message(F.chat.type.in_({"group", "supergroup"}), ~F.from_user.is_bot)
 async def handle_banned_words(message: Message):
@@ -399,7 +397,8 @@ async def menu_konkurs(call: CallbackQuery):
     
     for i, u in enumerate(top_users, 1):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-        text += f"{medal} {html_escape(u['full_name'] or 'Foydalanuvchi')} — <b>{u['score']} ball</b>\n"
+        name_safe = html_escape(u['full_name'] or 'Foydalanuvchi')
+        text += f"{medal} {name_safe} — <b>{u['score']} ball</b>\n"
         
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📤 Ulashish", url=f"https://t.me/share/url?url={ref_link}")],
@@ -438,7 +437,6 @@ async def menu_my_orders(call: CallbackQuery):
         breed = html_escape(str(ad.get("breed") or "—"))
         text += f"🐱 <b>{breed}</b> | {st}\n📅 {ad['created_at'].strftime('%d.%m.%Y')}\n\n"
         
-        # Tasdiqlangan e'lonlar uchun maxsus tugmalar
         if ad["status"] == "approved":
             action_text = "✅ Berib bo'ldim" if ad["ad_type"] == "hadiya" else "💰 Sotildi"
             kb_buttons.append([InlineKeyboardButton(text=f"{action_text} ({breed})", callback_data=f"user_ad_done_{ad['id']}")])
@@ -459,16 +457,13 @@ async def user_mark_ad_done(call: CallbackQuery):
 
     action_text = "Berib bo'lindi" if ad["ad_type"] == "hadiya" else "Sotildi"
     
-    # DB dan o'chirish
     await db.delete_ad(ad_id)
     
-    # Kanaldagi xabarni tahrirlash
     if ad.get("channel_message_id"):
         try:
             target_chat = CHANNEL_SOTISH_ID if ad["ad_type"] == "sotish" else CHANNEL_HADIYA_ID
             old_caption = f"#SOTILDI 💰" if ad["ad_type"] == "sotish" else f"#BERILDI 🎁"
             
-            # Telefon raqamini yashirish va statusni yangilash
             breed = html_escape(str(ad.get("breed") or "—"))
             age = html_escape(str(ad.get("age") or "—"))
             address = html_escape(str(ad.get("address") or "—"))
@@ -527,7 +522,7 @@ async def receive_photo(message: Message, state: FSMContext):
         await message.answer("❌ Iltimos, faqat video yuboring!"); return
     photos = data.get("photos", [])
     if len(photos) >= 3:
-        await message.answer("❌ Maksimum 3 ta rasm.", reply_markup=get_continue_kb()); return
+        await message.answer("❌ Maksimum 3 ta rasm.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➡️ Davom etish", callback_data="continue_process")]])); return
     
     photos.append(message.photo[-1].file_id)
     await state.update_data(photos=photos)
@@ -635,18 +630,29 @@ async def process_price(message: Message, state: FSMContext):
     await send_ad_preview(message, state)
 
 # =====================================================================
-# PREVIEW VA BALANS TEKSHIRUVI
+# PREVIEW (QAVSLAR TO'LIQ TO'G'RILANDI)
 # =====================================================================
 async def send_ad_preview(message: Message, state: FSMContext):
     data = await state.get_data()
     user = await db.get_user(message.from_user.id if message.from_user else message.chat.id)
     price = data.get("bot_price", 0)
     
+    # O'zgaruvchilarni alohida olamiz (xato bo'lmasligi uchun)
+    address_safe = html_escape(str(data.get('address') or '—'))
+    phone_safe = html_escape(str(data.get('phone') or '—'))
+    price_safe = html_escape(str(data.get('price') or '0'))
+    currency_safe = html_escape(str(data.get('currency') or "so'm"))
+    breed_safe = html_escape(str(data.get('breed') or '—'))
+    age_safe = html_escape(str(data.get('age') or '—'))
+    gender_safe = html_escape(str(data.get('gender') or '—'))
+    health_safe = html_escape(str(data.get('health') or '—'))
+    sterilization_safe = html_escape(str(data.get('sterilization') or '—'))
+
     caption = Texts.PREVIEW_HEADER
-    caption += f"📍 Manzil: {html_escape(str(data.get('address'))}\n📞 Tel: {html_escape(str(data.get('phone'))}\n"
+    caption += f"📍 Manzil: {address_safe}\n📞 Tel: {phone_safe}\n"
     if data.get("ad_type") != "hadiya":
-        caption += f"💰 Narx: {html_escape(str(data.get('price'))} {html_escape(str(data.get('currency'))}\n"
-    caption += f"🐱 Zot: {html_escape(str(data.get('breed'))}\n🎂 Yosh: {html_escape(str(data.get('age'))}\n👤 Jins: {html_escape(str(data.get('gender'))}\n❤️ Sog'liq: {html_escape(str(data.get('health'))}\n🧬 Nasl: {html_escape(str(data.get('sterilization'))}\n\n"
+        caption += f"💰 Narx: {price_safe} {currency_safe}\n"
+    caption += f"🐱 Zot: {breed_safe}\n🎂 Yosh: {age_safe}\n👤 Jins: {gender_safe}\n❤️ Sog'liq: {health_safe}\n🧬 Nasl: {sterilization_safe}\n\n"
     
     if price > 0:
         caption += f"💳 <b>Hisobingiz:</b> {user['balance']:,} so'm\n"
@@ -660,7 +666,10 @@ async def send_ad_preview(message: Message, state: FSMContext):
     kb = get_preview_kb(user['balance'], price)
     
     if photos:
-        await message.answer_video(video=photos[0], caption=caption, reply_markup=kb) if data.get("media_type") == "video" else await message.answer_photo(photo=photos[0], caption=caption, reply_markup=kb)
+        if data.get("media_type") == "video":
+            await message.answer_video(video=photos[0], caption=caption, reply_markup=kb)
+        else:
+            await message.answer_photo(photo=photos[0], caption=caption, reply_markup=kb)
     else:
         await message.answer(caption, reply_markup=kb)
     await state.set_state(AdStates.preview)
@@ -691,8 +700,21 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     await safe_delete(call.message)
     await bot.send_message(call.from_user.id, Texts.AD_ACCEPTED)
 
-    admin_caption = f"🆕 <b>YANGI REKLAMA!</b>\n\n👤 Foydalanuvchi: #{user['user_number']} ({html_escape(user['username'])})\n📋 Turi: {str(data.get('ad_type')).upper()}\n🐱 Zot: {html_escape(str(data.get('breed')))}\n🎂 Yosh: {html_escape(str(data.get('age')))}\n📍 Manzil: {html_escape(str(data.get('address')))}\n📞 Tel: {html_escape(str(data.get('phone')))}\n"
-    if data.get("ad_type") != "hadiya": admin_caption += f"💰 Narx: {html_escape(str(data.get('price'))} {html_escape(str(data.get('currency')))}\n"
+    # Admin xabari uchun o'zgaruvchilar
+    u_name_safe = html_escape(user['username'] or '—')
+    ad_type_upper = str(data.get('ad_type')).upper()
+    b_safe = html_escape(str(data.get('breed') or '—'))
+    a_safe = html_escape(str(data.get('age') or '—'))
+    addr_safe = html_escape(str(data.get('address') or '—'))
+    ph_safe = html_escape(str(data.get('phone') or '—'))
+    
+    admin_caption = f"🆕 <b>YANGI REKLAMA!</b>\n\n👤 Foydalanuvchi: #{user['user_number']} ({u_name_safe})\n📋 Turi: {ad_type_upper}\n🐱 Zot: {b_safe}\n🎂 Yosh: {a_safe}\n📍 Manzil: {addr_safe}\n📞 Tel: {ph_safe}\n"
+    
+    if data.get("ad_type") != "hadiya":
+        p_safe = html_escape(str(data.get('price') or '0'))
+        c_safe = html_escape(str(data.get('currency') or "so'm"))
+        admin_caption += f"💰 Narx: {p_safe} {c_safe}\n"
+        
     admin_caption += f"💵 To'landi: {price:,} so'm"
     
     kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -726,7 +748,6 @@ async def tech_admin_approve(call: CallbackQuery):
         sent = await post_to_channel(ad)
         await db.update_ad_status(ad_id, "approved", channel_message_id=sent.message_id)
         
-        # Foydalanuvchiga xabar (Screenshot 5 ga o'xshash)
         action_text = "Berib bo'ldim" if ad["ad_type"] == "hadiya" else "Sotildi"
         user_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"✅ {action_text}", callback_data=f"user_ad_done_{ad_id}")],
@@ -765,7 +786,7 @@ async def process_decline_reason(message: Message, state: FSMContext):
     await state.clear()
 
 # =====================================================================
-# ADMIN: E'LONNI TAHRIRLASH (EDIT)
+# ADMIN: E'LONNI TAHRIRLASH (EDIT) (QAVSLAR TO'G'RILANDI)
 # =====================================================================
 @router.callback_query(F.data.startswith("admin_edit_ad_"))
 async def admin_edit_ad_menu(call: CallbackQuery, state: FSMContext):
@@ -799,9 +820,19 @@ async def admin_edit_value_save(message: Message, state: FSMContext):
     await db.update_ad_details(ad_id, **{field: message.text})
     await message.answer("✅ Muvaffaqiyatli o'zgartirildi!")
     
-    # Yangilangan e'lonni qayta ko'rsatish
     ad = await db.get_ad(ad_id)
-    admin_caption = f"🔄 <b>YANGILANGAN REKLAMA!</b>\n\n👤 User ID: {ad['user_id']}\n🐱 Zot: {html_escape(str(ad.get('breed')))}\n🎂 Yosh: {html_escape(str(ad.get('age')))}\n📍 Manzil: {html_escape(str(ad.get('address')))}\n📞 Tel: {html_escape(str(ad.get('phone')))}\n💰 Narx: {html_escape(str(ad.get('price'))} {html_escape(str(ad.get('currency')))}\n"
+    
+    # O'zgaruvchilar
+    u_id = ad['user_id']
+    b_safe = html_escape(str(ad.get('breed') or '—'))
+    a_safe = html_escape(str(ad.get('age') or '—'))
+    addr_safe = html_escape(str(ad.get('address') or '—'))
+    ph_safe = html_escape(str(ad.get('phone') or '—'))
+    p_safe = html_escape(str(ad.get('price') or '0'))
+    c_safe = html_escape(str(ad.get('currency') or "so'm"))
+
+    admin_caption = f"🔄 <b>YANGILANGAN REKLAMA!</b>\n\n👤 User ID: {u_id}\n🐱 Zot: {b_safe}\n🎂 Yosh: {a_safe}\n📍 Manzil: {addr_safe}\n📞 Tel: {ph_safe}\n💰 Narx: {p_safe} {c_safe}\n"
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{ad_id}"),
         InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=f"admin_edit_ad_{ad_id}"),
@@ -809,7 +840,9 @@ async def admin_edit_value_save(message: Message, state: FSMContext):
     ]])
     
     photos = ad.get("photos") or []
-    if isinstance(photos, str): photos = json.loads(photos)
+    if isinstance(photos, str): 
+        try: photos = json.loads(photos)
+        except: photos = []
     
     if photos:
         if len(photos[0]) > 50: await message.answer_video(video=photos[0], caption=admin_caption, reply_markup=kb)
