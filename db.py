@@ -1,1143 +1,863 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
-# FAYL: bot.py
-# TAVSIF: To'liq, xatosiz, barcha funksiyalar ishlaydigan Telegram Bot (Aiogram v3)
+# FAYL: db.py
+# TAVSIF: PostgreSQL + asyncpg — to'liq ishchi, barcha migratsiyalar, yangilangan
+#         statistika, cats_data (JSONB) va barcha yordamchi funksiyalar bilan.
 # ==============================================================================
 
 import asyncio
 import json
 import logging
-import re
 from datetime import datetime, timedelta
-from html import escape as html_escape
+from typing import Optional, List, Dict, Any
 
-from aiogram import Bot, Dispatcher, F, Router, types
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import CommandStart
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (
-    BotCommand, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
-    KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove,
-    ChatPermissions, InputMediaPhoto, InputMediaVideo
-)
+import asyncpg
 
-from telethon import TelegramClient, events
-from telethon.sessions import StringSession
+from config import BotConfig, Settings
 
-from config import BotConfig, DataLists, Prices, Settings, Texts, UserbotConfig
-from db import db
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-bot = Bot(
-    token=BotConfig.BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-)
-dp = Dispatcher()
-router = Router()
-dp.include_router(router)
+class Database:
+    def __init__(self):
+        self.pool: Optional[asyncpg.Pool] = None
+        self._connect_lock = asyncio.Lock()
 
-CHANNEL_SOTISH_ID = BotConfig.CHANNEL_SOTISH_ID
-CHANNEL_HADIYA_ID = BotConfig.CHANNEL_HADIYA_ID
-CHANNEL_SOTISH_LINK = BotConfig.CHANNEL_SOTISH_LINK
-CHANNEL_HADIYA_LINK = BotConfig.CHANNEL_HADIYA_LINK
-BOT_LINK = BotConfig.BOT_LINK
+    # ==========================================================================
+    # ULANISH VA JADVALLARNI YARATISH (MIGRATSIYALAR BILAN)
+    # ==========================================================================
 
-userbot_client: TelegramClient | None = None
-
-async def safe_answer(call: CallbackQuery, text: str = None, show_alert: bool = False):
-    try:
-        await call.answer(text=text, show_alert=show_alert)
-    except TelegramBadRequest:
-        pass
-
-async def safe_edit_text(message: Message, text: str, reply_markup=None):
-    try:
-        await message.edit_text(text, reply_markup=reply_markup)
-    except TelegramBadRequest:
-        try:
-            await message.delete()
-        except:
-            pass
-        await message.answer(text, reply_markup=reply_markup)
-
-async def safe_delete(message: Message):
-    try:
-        await message.delete()
-    except:
-        pass
-
-async def start_userbot(session_string: str):
-    global userbot_client
-    if not session_string or len(session_string) < 10:
-        return
-    try:
-        if userbot_client and userbot_client.is_connected():
-            await userbot_client.disconnect()
-
-        userbot_client = TelegramClient(
-            StringSession(session_string),
-            api_id=UserbotConfig.API_ID,
-            api_hash=UserbotConfig.API_HASH,
-        )
-        await userbot_client.connect()
-
-        if not await userbot_client.is_user_authorized():
-            logger.error("❌ Userbot sessiyasi eskirgan yoki yaroqsiz! Qaytadan ulang.")
-            await userbot_client.disconnect()
-            userbot_client = None
+    async def connect(self):
+        """Pool yaratish va jadvallarni xavfsiz yaratish."""
+        if self.pool is not None:
             return
 
-        logger.info("✅ Userbot ishga tushdi")
-
-        @userbot_client.on(events.NewMessage(chats=UserbotConfig.TARGET_BOT))
-        async def handler(event):
-            text = event.message.text or ""
-            m = re.search(UserbotConfig.CARD_TRANSFER_REGEX, text)
-            if not m:
+        async with self._connect_lock:
+            if self.pool is not None:
                 return
+
+            dsn = BotConfig.DATABASE_URL
+            if dsn.startswith("postgres://"):
+                dsn = dsn.replace("postgres://", "postgresql://", 1)
+
             try:
-                amount = int(m.group(1).replace(" ", ""))
-                last4 = m.group(2)
-                user_id = await db.match_userbot_payment(amount, last4)
-                if user_id:
-                    try:
-                        await bot.send_message(user_id, Texts.TOPUP_PAID.format(amount=amount))
-                    except Exception:
-                        pass
+                self.pool = await asyncpg.create_pool(
+                    dsn=dsn,
+                    min_size=1,
+                    max_size=15,
+                    command_timeout=60,
+                )
+                await self._create_tables()
+                logger.info("✅ Database pool tayyor")
             except Exception as e:
-                logger.warning(f"Userbot to'lovini tahlil qilishda xato: {e}")
+                logger.error(f"❌ Database ulanish xatosi: {e}")
+                if self.pool is not None:
+                    await self.pool.close()
+                    self.pool = None
+                raise
 
-    except Exception as e:
-        logger.error(f"❌ Userbot ishga tushish xatosi: {e}")
-        userbot_client = None
+    async def disconnect(self):
+        if self.pool is not None:
+            await self.pool.close()
+            self.pool = None
+            logger.info("🔌 Database pool yopildi")
 
-async def check_subscription(user_id: int) -> tuple[bool, bool]:
-    sotish_ok = hadiya_ok = False
-    for chat_id, key in [(CHANNEL_SOTISH_ID, "sotish"), (CHANNEL_HADIYA_ID, "hadiya")]:
-        try:
-            m = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-            status = getattr(m.status, "value", m.status)
-            ok = status in ("member", "administrator", "creator")
-            if status == "restricted":
-                ok = getattr(m, "is_member", False)
-            if key == "sotish":
-                sotish_ok = ok
-            else:
-                hadiya_ok = ok
-        except Exception:
-            pass
-    return sotish_ok, hadiya_ok
-
-def get_sub_text(sotish_ok: bool, hadiya_ok: bool) -> str:
-    footer = "✅ <b>Barcha kanallarga obuna bo'lgansiz!</b>" if (sotish_ok and hadiya_ok) else "Obuna bo'lgach, <b>«🔄 Tekshirish»</b> tugmasini bosing."
-    return Texts.SUB_REQUIRED_TEXT.format(
-        sotish_icon="✅" if sotish_ok else "❌",
-        hadiya_icon="✅" if hadiya_ok else "❌",
-        footer=footer,
-    )
-
-def get_subscription_kb(sotish_ok: bool, hadiya_ok: bool) -> InlineKeyboardMarkup:
-    kb = []
-    if sotish_ok:
-        kb.append([InlineKeyboardButton(text="✅ Sotish kanali", callback_data="noop")])
-    else:
-        kb.append([InlineKeyboardButton(text="📢 Sotish kanalga obuna", url=CHANNEL_SOTISH_LINK)])
-    if hadiya_ok:
-        kb.append([InlineKeyboardButton(text="✅ Hadiya kanali", callback_data="noop")])
-    else:
-        kb.append([InlineKeyboardButton(text="🎁 Hadiya kanalga obuna", url=CHANNEL_HADIYA_LINK)])
-    kb.append([InlineKeyboardButton(text="🔄 Tekshirish", callback_data="check_sub")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-class RegStates(StatesGroup):
-    checking_subscription = State()
-    waiting_phone = State()
-
-class AdStates(StatesGroup):
-    choosing_cat_count = State()
-    choosing_media_type = State()
-    waiting_media = State()
-    choosing_breed = State()
-    custom_breed = State()
-    choosing_age = State()
-    choosing_health = State()
-    choosing_gender = State()
-    choosing_sterilization = State()
-    waiting_address = State()
-    waiting_phone = State()
-    choosing_currency = State()
-    waiting_price = State()
-    preview = State()
-
-class AdminStates(StatesGroup):
-    add_balance_user_id = State()
-    add_balance_amount = State()
-    add_score_batch = State()
-    decline_reason = State()
-    editing_ad_field = State()
-    editing_ad_value = State()
-
-def get_main_menu_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
-    kb = [
-        [InlineKeyboardButton(text="📢 Kanalga reklama bermoqchiman", callback_data="menu_reklama")],
-        [InlineKeyboardButton(text="🏆 Konkurs", callback_data="menu_konkurs")],
-        [InlineKeyboardButton(text="💳 Hisobni to'ldirish", web_app=types.WebAppInfo(url=f"{BotConfig.WEB_APP_URL}?page=topup"))],
-        [InlineKeyboardButton(text="📋 Mening e'lonlarim", callback_data="menu_my_orders")],
-        [InlineKeyboardButton(text="ℹ️ Bot haqida", callback_data="menu_about")],
-        [InlineKeyboardButton(text="👤 Admin bilan bog'lanish", callback_data="menu_admin")],
-        [InlineKeyboardButton(text="🖥️ Web App'ni ochish", web_app=types.WebAppInfo(url=BotConfig.WEB_APP_URL))],
-    ]
-    if is_admin:
-        kb.append([InlineKeyboardButton(text="👨‍💼 Admin paneli", callback_data="admin_panel")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_phone_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📞 Raqamni yuborish", request_contact=True)]], resize_keyboard=True, one_time_keyboard=True)
-
-def get_ad_type_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Mushukimni sotmoqchiman", callback_data="adtype_sotish")],
-        [InlineKeyboardButton(text="🎁 Mushukimni hadiyaga bermoqchiman", callback_data="adtype_hadiya")],
-        [InlineKeyboardButton(text="↩️ Asosiy menyuga qaytish", callback_data="menu_back_to_main")],
-    ])
-
-def get_media_type_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🖼️ Rasm yuboraman", callback_data="media_photo")],
-        [InlineKeyboardButton(text="🎥 Video yuboraman (1 daqiqagacha)", callback_data="media_video")],
-        [InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_reklama")],
-    ])
-
-def get_preview_kb(balance: int, price: int) -> InlineKeyboardMarkup:
-    kb = []
-    if balance < price:
-        kb.append([InlineKeyboardButton(text="💳 Hisobni to'ldirish", web_app=types.WebAppInfo(url=f"{BotConfig.WEB_APP_URL}?page=topup"))])
-    kb.append([InlineKeyboardButton(text="✅ Ha, roziman va Tasdiqlash", callback_data="preview_confirm")])
-    kb.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="menu_reklama")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_viloyat_kb() -> InlineKeyboardMarkup:
-    kb = [[InlineKeyboardButton(text=v, callback_data="viloyat_" + v.lower().replace(" ", "_").replace("'", ""))] for v in DataLists.VILOYATLAR]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_breed_kb(page: int = 0) -> InlineKeyboardMarkup:
-    kb, row = [], []
-    for i, breed in enumerate(DataLists.BREEDS[page]):
-        row.append(InlineKeyboardButton(text=breed, callback_data=f"breed_{page}_{i}"))
-        if len(row) == 2:
-            kb.append(row)
-            row = []
-    if row:
-        kb.append(row)
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"breed_page_{page-1}"))
-    if page < len(DataLists.BREEDS) - 1:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"breed_page_{page+1}"))
-    if nav:
-        kb.append(nav)
-    kb.append([InlineKeyboardButton(text="✏️ O'zim yozaman", callback_data="breed_custom")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_age_kb() -> InlineKeyboardMarkup:
-    kb, row = [], []
-    for age in DataLists.AGES:
-        cb = age.replace(" ", "_").replace(",", "")
-        row.append(InlineKeyboardButton(text=age, callback_data=f"age_{cb}"))
-        if len(row) == 3:
-            kb.append(row)
-            row = []
-    if row:
-        kb.append(row)
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_simple_kb(options: list, prefix: str) -> InlineKeyboardMarkup:
-    kb = [[InlineKeyboardButton(text=text, callback_data=f"{prefix}_{val}")] for text, val in options]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-async def post_to_channel(ad_data: dict):
-    ad_type = ad_data.get("ad_type")
-    
-    cats = ad_data.get("cats_data") or []
-    if not cats:
-        cats = [{
-            "breed": ad_data.get("breed") or "—",
-            "age": ad_data.get("age") or "—",
-            "gender": ad_data.get("gender") or "—",
-            "sterilization": ad_data.get("sterilization") or "—",
-            "health": ad_data.get("health") or "—"
-        }]
-
-    cats_text = ""
-    for i, cat in enumerate(cats, 1):
-        prefix = f"{i}-mushuk: " if len(cats) > 1 else ""
-        b = html_escape(str(cat.get('breed') or '—'))
-        a = html_escape(str(cat.get('age') or '—'))
-        g = html_escape(str(cat.get('gender') or '—'))
-        s = html_escape(str(cat.get('sterilization') or '—'))
-        h = html_escape(str(cat.get('health') or '—'))
-        cats_text += f"📝 {prefix}{b} | {a} | {g} | {s} | {h}\n"
-
-    address = html_escape(str(ad_data.get("address") or "—"))
-    phone = html_escape(str(ad_data.get("phone") or "—"))
-    price = html_escape(str(ad_data.get("price") or "0"))
-    currency = html_escape(str(ad_data.get("currency") or "so'm"))
-
-    footer = (
-        '👤 <a href="https://t.me/zayd_catlover">Admin</a>\n'
-        '📢 <a href="https://t.me/Uzbek_cat_bot?start=reklama">Reklama berish</a>\n\n'
-        '<a href="https://youtu.be/vdwgSB7_amw">YouTube</a> | <a href="https://www.instagram.com/p/C-cZkgstVGK/">Instagram</a> | <a href="https://t.me/uzbek_cats">Telegram</a>'
-    )
-
-    if ad_type == "sotish":
-        caption = f"#SOTILADI 💰\n\n{cats_text}\n📍 Manzil: {address}\n💵 Narxi: {price} {currency}\n📞 Tel: {phone}\n\n{footer}"
-        target = CHANNEL_SOTISH_ID
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎁 Hadiya kanal", url=CHANNEL_HADIYA_LINK)], [InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]])
-    else:
-        caption = f"#HADIYA 🎁\n\n{cats_text}\n📍 Manzil: {address}\n📞 Tel: {phone}\n\n{footer}"
-        target = CHANNEL_HADIYA_ID
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💰 Sotiladi kanal", url=CHANNEL_SOTISH_LINK)], [InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]])
-
-    photos = ad_data.get("photos") or []
-    if isinstance(photos, str):
-        try:
-            photos = json.loads(photos)
-        except:
-            photos = []
-
-    try:
-        if len(photos) > 1:
-            media_group = []
-            for i, p in enumerate(photos):
-                if p.startswith("BQAC") or p.endswith(".mp4") or len(p) > 100:
-                    media = InputMediaVideo(media=p, caption=caption if i==0 else None, parse_mode=ParseMode.HTML)
-                else:
-                    media = InputMediaPhoto(media=p, caption=caption if i==0 else None, parse_mode=ParseMode.HTML)
-                media_group.append(media)
-            
-            sent_messages = await bot.send_media_group(chat_id=target, media=media_group)
-            sent = sent_messages[0]
-            
+    async def _create_tables(self):
+        """Jadvallarni yaratish va eski xatolarni avtomatik tuzatish."""
+        async with self.pool.acquire() as conn:
+            # Bir vaqtda bir nechta bot ishga tushsa ham xato bermasligi uchun qulf
+            await conn.execute("SELECT pg_advisory_lock(987654321)")
             try:
-                await bot.edit_message_reply_markup(chat_id=target, message_id=sent.message_id, reply_markup=kb)
-            except TelegramBadRequest as e:
-                if "message is not modified" not in str(e):
-                    raise e
-                    
-        elif len(photos) == 1:
-            p = photos[0]
-            if p.startswith("BQAC") or p.endswith(".mp4") or len(p) > 100:
-                sent = await bot.send_video(chat_id=target, video=p, caption=caption, reply_markup=kb)
-            else:
-                # Agar API dan yuklangan bo'lsa (fayl nomi bilan)
-                sent = await bot.send_photo(chat_id=target, photo=p, caption=caption, reply_markup=kb)
-        else:
-            sent = await bot.send_message(chat_id=target, text=caption, reply_markup=kb)
-        return sent
-    except Exception as e:
-        logger.error(f"❌ Kanalga yuborishda xato (chat={target}): {e}")
-        raise
+                await self._run_ddl(conn)
+            finally:
+                await conn.execute("SELECT pg_advisory_unlock(987654321)")
 
-async def check_user_middleware(handler, event: Message, data: dict):
-    user_id = event.from_user.id
-    if user_id in BotConfig.ADMIN_IDS:
-        return await handler(event, data)
-    text = event.text or ""
-    if text.startswith("/start"):
-        return await handler(event, data)
+    async def _run_ddl(self, conn):
+        # 1. USERS JADVALI
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id BIGINT PRIMARY KEY,
+                user_number SERIAL UNIQUE,
+                username TEXT,
+                full_name TEXT,
+                phone TEXT UNIQUE,
+                balance BIGINT DEFAULT 0,
+                score INT DEFAULT 0,
+                spent BIGINT DEFAULT 0,
+                ad_count INT DEFAULT 0,
+                warn_count INT DEFAULT 0,
+                mute_until TIMESTAMP,
+                is_banned BOOLEAN DEFAULT FALSE,
+                is_admin BOOLEAN DEFAULT FALSE,
+                referred_by BIGINT,
+                registered_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
 
-    if await db.get_setting("bot_enabled", "1") == "0":
-        await event.answer(Texts.BOT_DISABLED)
-        return
+        # 🚨 ESKI BAZALARNI YANGILASH (MIGRATSIYA)
+        # Bu blok sizda chiqqan "referred_by does not exist" xatosini 100% tuzatadi.
+        await conn.execute("""
+            DO $$
+            BEGIN
+                -- referred_by ustuni yo'q bo'lsa qo'shamiz
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referred_by') THEN
+                    ALTER TABLE users ADD COLUMN referred_by BIGINT;
+                END IF;
+                
+                -- mute_until nomi xato bo'lsa tuzatamiz (muted_until -> mute_until)
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='muted_until') THEN
+                    ALTER TABLE users RENAME COLUMN muted_until TO mute_until;
+                END IF;
 
-    user = await db.get_user(user_id)
-    if user and user.get("is_banned"):
-        await event.answer(Texts.USER_BANNED)
-        return
-    
-    if await db.check_mute(user_id):
-        await event.answer("❌ Siz vaqtincha yozish huquqidan mahrum qilingansiz. (24 soat)")
-        return
+                -- spent ustuni yo'q bo'lsa qo'shamiz
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='spent') THEN
+                    ALTER TABLE users ADD COLUMN spent BIGINT DEFAULT 0;
+                END IF;
 
-    return await handler(event, data)
+                -- ad_count ustuni yo'q bo'lsa qo'shamiz
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='ad_count') THEN
+                    ALTER TABLE users ADD COLUMN ad_count INT DEFAULT 0;
+                END IF;
+            END $$;
+        """)
 
-dp.message.middleware(check_user_middleware)
+        # 2. ADS JADVALI (Yangi cats_data JSONB bilan)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ads (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                ad_type TEXT NOT NULL,
+                tariff TEXT,
+                photos JSONB DEFAULT '[]'::jsonb,
+                cats_data JSONB DEFAULT '[]'::jsonb,
+                breed TEXT,
+                age TEXT,
+                gender TEXT,
+                health TEXT,
+                sterilization TEXT,
+                address TEXT,
+                phone TEXT,
+                price TEXT DEFAULT '0',
+                currency TEXT DEFAULT 'so''m',
+                ad_number INT,
+                cat_count INT DEFAULT 1,
+                price_paid BIGINT DEFAULT 0,
+                status TEXT DEFAULT 'pending',
+                reject_reason TEXT,
+                channel_message_id BIGINT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP
+            )
+        """)
 
-@router.message(F.chat.type.in_({"group", "supergroup"}), ~F.from_user.is_bot)
-async def handle_banned_words(message: Message):
-    if message.from_user.id in BotConfig.ADMIN_IDS:
-        return
-    text = message.text or ""
-    if not text:
-        return
+        # Migratsiya: Agar eski ads jadvalida cats_data bo'lmasa qo'shamiz
+        await conn.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ads' AND column_name='cats_data') THEN
+                    ALTER TABLE ads ADD COLUMN cats_data JSONB DEFAULT '[]'::jsonb;
+                END IF;
+            END $$;
+        """)
 
-    text_lower = text.lower()
-    for word in DataLists.BANNED_WORDS:
-        if word.lower() in text_lower:
-            try:
-                await message.delete()
-            except:
-                pass
-            
-            user_id = message.from_user.id
-            warn_count = await db.add_warning(user_id)
-            user_link = f'<a href="tg://user?id={user_id}">{html_escape(message.from_user.first_name)}</a>'
-            
-            if warn_count >= 3:
-                await db.mute_user(user_id, hours=24)
-                try:
-                    await bot.restrict_chat_member(
-                        chat_id=message.chat.id, user_id=user_id,
-                        permissions=ChatPermissions(can_send_messages=False),
-                        until_date=datetime.now() + timedelta(hours=24)
-                    )
-                except:
-                    pass
-                warn_text = f"🚫 {user_link}, siz 3 marta qoidani buzdingiz! 1 kunga yozish huquqidan mahrum qilindingiz."
-            else:
-                warn_text = f"⚠️ {user_link}, Iltimos reklama tarqatmang!\n\nSiz {warn_count}-marta reklama tarqatdingiz. Yana {3 - warn_count} ta reklama tarqatsangiz, 1 kunga bloklanasiz."
-            
-            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]])
-            await message.answer(warn_text, reply_markup=kb)
-            return
+        # 3. PAYMENTS JADVALI
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS payments (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                amount BIGINT NOT NULL,
+                card_id INT,
+                card_last4 TEXT,
+                receipt_file_id TEXT,
+                status TEXT DEFAULT 'pending',
+                userbot_matched BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP
+            )
+        """)
 
-@router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext):
-    await state.clear()
-    user_id = message.from_user.id
-    user = await db.get_user(user_id)
-    
-    if user and user.get("is_banned"):
-        await message.answer(Texts.USER_BANNED)
-        return
-    if user:
-        await message.answer(Texts.MAIN_MENU, reply_markup=get_main_menu_kb(user_id in BotConfig.ADMIN_IDS))
-        return
+        # 4. CARDS JADVALI
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS cards (
+                id SERIAL PRIMARY KEY,
+                number TEXT NOT NULL,
+                holder TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
 
-    args = message.text.split(maxsplit=1)
-    if len(args) > 1 and args[1].startswith("REF"):
-        await state.update_data(referral_code=args[1])
+        # 5. SETTINGS JADVALI
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
 
-    if Settings.REQUIRE_SUBSCRIPTION:
-        sotish_ok, hadiya_ok = await check_subscription(user_id)
-        await message.answer(get_sub_text(sotish_ok, hadiya_ok), reply_markup=get_subscription_kb(sotish_ok, hadiya_ok))
-        await state.set_state(RegStates.checking_subscription)
-    else:
-        await message.answer(Texts.START_TEXT, reply_markup=get_phone_kb())
-        await state.set_state(RegStates.waiting_phone)
+        # 6. USERBOT_SESSIONS JADVALI
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS userbot_sessions (
+                id SERIAL PRIMARY KEY,
+                phone TEXT,
+                session_string TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE,
+                added_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
 
-@router.callback_query(F.data == "noop")
-async def cb_noop(call: CallbackQuery):
-    await safe_answer(call, Texts.SUB_OK_ALERT)
+        # 7. REFERRALS JADVALI
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS referrals (
+                id SERIAL PRIMARY KEY,
+                referrer_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                referred_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
 
-@router.callback_query(F.data == "check_sub")
-async def cb_check_sub(call: CallbackQuery, state: FSMContext):
-    sotish_ok, hadiya_ok = await check_subscription(call.from_user.id)
-    if sotish_ok and hadiya_ok:
-        await safe_edit_text(call.message, "✅ Obuna tasdiqlandi!")
-        await call.message.answer(Texts.START_TEXT, reply_markup=get_phone_kb())
-        await state.set_state(RegStates.waiting_phone)
-        return
-    try:
-        await call.message.edit_text(get_sub_text(sotish_ok, hadiya_ok), reply_markup=get_subscription_kb(sotish_ok, hadiya_ok))
-    except:
-        pass
-    await safe_answer(call, "❌ Iltimos, barcha kanallarga obuna bo'ling!", show_alert=True)
+        # 8. USERBOT_PAYMENTS JADVALI
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS userbot_payments (
+                id SERIAL PRIMARY KEY,
+                amount BIGINT,
+                last4 TEXT,
+                matched_user_id BIGINT,
+                matched BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """)
 
-@router.message(RegStates.waiting_phone, F.contact | F.text)
-async def process_phone(message: Message, state: FSMContext):
-    phone = message.contact.phone_number if message.contact else (message.text or "").strip()
-    if not message.contact and not re.match(r"^\+?998\d{9}$", phone.replace(" ", "")):
-        await message.answer(Texts.ASK_PHONE)
-        return
-    phone = phone if phone.startswith("+") else f"+{phone}"
+        # INDEKSLAR (Tez ishlashi uchun)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads(user_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_tariff ON ads(tariff)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_score ON users(score DESC)")
 
-    full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
-    username = f"@{message.from_user.username}" if message.from_user.username else "Noma'lum"
-    data = await state.get_data()
-    
-    try:
-        user = await db.create_user(message.from_user.id, username, full_name, phone, data.get("referral_code"))
-    except Exception as e:
-        await message.answer(f"❌ Xatolik: {e}")
-        return
+        logger.info("✅ Jadvallar va indekslar tayyor")
 
-    await message.answer(Texts.REG_SUCCESS.format(user_number=user["user_number"], score=user["score"], referrals=0), reply_markup=ReplyKeyboardRemove())
-    await message.answer(Texts.MAIN_MENU, reply_markup=get_main_menu_kb(message.from_user.id in BotConfig.ADMIN_IDS))
-    await state.clear()
+    # ==========================================================================
+    # YORDAMCHI FUNKSIYALAR
+    # ==========================================================================
 
-@router.callback_query(F.data == "menu_back_to_main")
-async def back_to_main(call: CallbackQuery):
-    await safe_edit_text(call.message, Texts.MAIN_MENU, reply_markup=get_main_menu_kb(call.from_user.id in BotConfig.ADMIN_IDS))
-
-@router.callback_query(F.data == "menu_konkurs")
-async def menu_konkurs(call: CallbackQuery):
-    user = await db.get_user(call.from_user.id)
-    ref_link = f"https://t.me/{BotConfig.BOT_USERNAME.replace('@', '')}?start=REF{user['id']}"
-    
-    text = "🏆 <b>Konkurs</b>\n\n"
-    text += f"👥 Sizning ballaringiz: <b>{user['score']} ball</b>\n"
-    text += f"🔗 Sizning linkingiz:\n<code>{ref_link}</code>\n\n"
-    text += "Do'stlaringizni taklif qiling va ball to'plang!\n"
-    text += "Eng ko'p ball to'plagan 10 kishi g'olib bo'ladi."
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📤 Ulashish", url=f"https://t.me/share/url?url={ref_link}")],
-        [InlineKeyboardButton(text="🏆 Reyting (Top 10)", callback_data="menu_rating")],
-        [InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")],
-    ])
-    await safe_edit_text(call.message, text, reply_markup=kb)
-
-@router.callback_query(F.data == "menu_rating")
-async def menu_rating(call: CallbackQuery):
-    top_users = await db.get_top_10_users()
-    text = "🥇 <b>Eng faol foydalanuvchilar (Top 10)</b>\n\n"
-    if not top_users:
-        text += "Hozircha reyting mavjud emas."
-    else:
-        for i, u in enumerate(top_users, 1):
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            name_safe = html_escape(u['full_name'] or 'Foydalanuvchi')
-            text += f"{medal} {name_safe} — <b>{u['score']} ball</b>\n"
-            
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_konkurs")]])
-    await safe_edit_text(call.message, text, reply_markup=kb)
-
-@router.callback_query(F.data == "menu_reklama")
-async def menu_reklama(call: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await safe_edit_text(call.message, Texts.AD_TYPE_SELECT, reply_markup=get_ad_type_kb())
-
-@router.callback_query(F.data == "menu_about")
-async def menu_about(call: CallbackQuery):
-    text = "ℹ️ <b>Bot haqida</b>\n\nUshbu bot orqali siz mushuklar haqida e'lon berishingiz, ularni sotishingiz yoki hadiya qilishingiz mumkin.\n\n🎁 Hadiya e'lonlari mutlaqo bepul.\n💰 Sotish uchun e'lonlar to'lov asosida."
-    await safe_edit_text(call.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
-
-@router.callback_query(F.data == "menu_admin")
-async def menu_admin(call: CallbackQuery):
-    text = "👤 <b>Admin bilan bog'lanish</b>\n\n👨‍💻 Texnik Admin: @It_project_2026\n📞 +998900512621\n\n👨‍💼 Bosh Admin: @zayd_catlover\n📞 +998934938181"
-    await safe_edit_text(call.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
-
-@router.callback_query(F.data == "menu_my_orders")
-async def menu_my_orders(call: CallbackQuery):
-    ads = await db.get_user_ads(call.from_user.id)
-    
-    await safe_edit_text(call.message, "⏳ E'lonlaringiz yuklanmoqda...", reply_markup=None)
-    
-    if not ads:
-        await call.message.answer(Texts.NO_ADS, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
-        return
-
-    st_map = {"pending": "⏳ Kutilmoqda", "approved": "✅ Tasdiqlangan", "rejected": "❌ Rad etilgan", "sold": "💰 Sotilgan", "expired": "⏰ Muddati o'tgan"}
-    
-    for ad in ads:
-        st = st_map.get(ad["status"], ad["status"])
-        cats = ad.get("cats_data") or []
-        if cats:
-            breed = html_escape(str(cats[0].get("breed") or "—"))
-        else:
-            breed = html_escape(str(ad.get("breed") or "—"))
-            
-        text = f"🐱 <b>{breed}</b> | {st}\n📅 {ad['created_at'].strftime('%d.%m.%Y')}"
+    @staticmethod
+    def _parse_ad(row) -> Optional[dict]:
+        """Bazadan kelgan qatorni (row) Dictionary ga o'girish va JSON larni parse qilish."""
+        if row is None:
+            return None
+        d = dict(row)
         
-        kb = None
-        if ad["status"] == "approved":
-            action_text = "✅ Berib bo'ldim" if ad["ad_type"] == "hadiya" else "💰 Sotildi"
-            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=action_text, callback_data=f"user_ad_done_{ad['id']}")]])
-            
-        photos = ad.get("photos") or []
+        # photos parsing
+        photos = d.get("photos")
         if isinstance(photos, str):
             try:
-                photos = json.loads(photos)
-            except:
-                photos = []
+                d["photos"] = json.loads(photos)
+            except json.JSONDecodeError:
+                d["photos"] = []
+        elif photos is None:
+            d["photos"] = []
             
-        if photos:
-            if len(photos[0]) > 100 or photos[0].endswith(".mp4"):
-                await call.message.answer_video(video=photos[0], caption=text, reply_markup=kb)
-            else:
-                await call.message.answer_photo(photo=photos[0], caption=text, reply_markup=kb)
-        else:
-            await call.message.answer(text, reply_markup=kb)
+        # cats_data parsing
+        cats_data = d.get("cats_data")
+        if isinstance(cats_data, str):
+            try:
+                d["cats_data"] = json.loads(cats_data)
+            except json.JSONDecodeError:
+                d["cats_data"] = []
+        elif cats_data is None:
+            d["cats_data"] = []
             
-    await call.message.answer("Barcha e'lonlaringiz ko'rsatildi.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Asosiy menyu", callback_data="menu_back_to_main")]]))
+        return d
 
-@router.callback_query(F.data.startswith("user_ad_done_"))
-async def user_mark_ad_done(call: CallbackQuery):
-    ad_id = int(call.data.split("_")[3])
-    ad = await db.get_ad(ad_id)
-    
-    if not ad or ad["user_id"] != call.from_user.id:
-        await safe_answer(call, "Xatolik: E'lon topilmadi.", show_alert=True)
-        return
+    # ==========================================================================
+    # USERS (FOYDALANUVCHILAR)
+    # ==========================================================================
 
-    action_text = "Berib bo'lindi" if ad["ad_type"] == "hadiya" else "Sotildi"
-    await db.delete_ad(ad_id)
-    
-    if ad.get("channel_message_id"):
-        try:
-            target_chat = CHANNEL_SOTISH_ID if ad["ad_type"] == "sotish" else CHANNEL_HADIYA_ID
-            old_caption = f"#SOTILDI 💰" if ad["ad_type"] == "sotish" else f"#BERILDI 🎁"
-            
-            cats = ad.get("cats_data") or []
-            if cats:
-                breed = html_escape(str(cats[0].get("breed") or "—"))
-                age = html_escape(str(cats[0].get("age") or "—"))
-            else:
-                breed = html_escape(str(ad.get("breed") or "—"))
-                age = html_escape(str(ad.get("age") or "—"))
-                
-            address = html_escape(str(ad.get("address") or "—"))
-            
-            new_caption = f"{old_caption}\n\n📝 {breed} | {age}\n\n📍 Manzil: {address}\n📞 Tel: <i>Yashirilgan</i>\n\n✅ <b>E'LON {action_text.upper()}!</b>"
-            
-            if ad.get("photos"):
-                await bot.edit_message_caption(chat_id=target_chat, message_id=ad["channel_message_id"], caption=new_caption, reply_markup=None)
-            else:
-                await bot.edit_message_text(chat_id=target_chat, message_id=ad["channel_message_id"], text=new_caption, reply_markup=None)
-        except Exception as e:
-            logger.error(f"Kanal xabarini tahrirlashda xato: {e}")
+    async def get_user(self, telegram_id: int) -> Optional[dict]:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM users WHERE id = $1", telegram_id)
+        return dict(row) if row else None
 
-    await safe_answer(call, f"✅ E'lon {action_text} deb belgilandi va o'chirildi!", show_alert=True)
-    await safe_delete(call.message)
+    async def get_user_by_phone(self, phone: str) -> Optional[dict]:
+        digits = "".join(c for c in phone if c.isdigit())
+        if len(digits) < 9:
+            return None
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM users WHERE phone LIKE $1", f"%{digits[-9:]}"
+            )
+        return dict(row) if row else None
 
-@router.callback_query(F.data.startswith("adtype_"))
-async def choose_ad_type(call: CallbackQuery, state: FSMContext):
-    ad_type = call.data.replace("adtype_", "")
-    await state.update_data(ad_type=ad_type)
-    if ad_type == "sotish":
-        await safe_edit_text(call.message, "🐱 <b>Nechta mushuk sotmoqchisiz?</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{i} ta mushuk", callback_data=f"catcount_{i}")] for i in range(1, 6)]))
-        await state.set_state(AdStates.choosing_cat_count)
-    else:
-        await safe_edit_text(call.message, Texts.MEDIA_ASK, reply_markup=get_media_type_kb())
-        await state.set_state(AdStates.choosing_media_type)
+    async def create_user(
+        self,
+        telegram_id: int,
+        username: str,
+        full_name: str,
+        phone: str,
+        referral_code: Optional[str] = None,
+    ) -> dict:
+        phone = phone.strip()
+        if not phone.startswith("+"):
+            phone = "+" + phone
 
-@router.callback_query(AdStates.choosing_cat_count, F.data.startswith("catcount_"))
-async def process_cat_count(call: CallbackQuery, state: FSMContext):
-    count = int(call.data.split("_")[1])
-    await state.update_data(cat_count=count, bot_price=Prices.get_bot_price(count))
-    await safe_edit_text(call.message, Texts.MEDIA_ASK, reply_markup=get_media_type_kb())
-    await state.set_state(AdStates.choosing_media_type)
+        referrer_id = None
+        if referral_code and isinstance(referral_code, str) and referral_code.startswith("REF"):
+            try:
+                rid = int(referral_code[3:])
+                if rid != telegram_id:
+                    referrer_id = rid
+            except (ValueError, TypeError):
+                referrer_id = None
 
-@router.callback_query(F.data.startswith("media_"))
-async def choose_media_type(call: CallbackQuery, state: FSMContext):
-    media_type = call.data.replace("media_", "")
-    await state.update_data(media_type=media_type, photos=[])
-    text = "🖼️ <b>Mushuk rasmlarini yuboring (1-3 ta):</b>" if media_type == "photo" else "🎥 <b>Mushuk videosini yuboring (1 daqiqagacha):</b>"
-    await safe_edit_text(call.message, text, reply_markup=None)
-    await state.set_state(AdStates.waiting_media)
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # 1. Foydalanuvchi allaqachon bormi?
+                existing_id = await conn.fetchval(
+                    "SELECT id FROM users WHERE id = $1", telegram_id
+                )
+                if existing_id:
+                    row = await conn.fetchrow("SELECT * FROM users WHERE id = $1", telegram_id)
+                    return dict(row)
 
-@router.message(AdStates.waiting_media, F.photo)
-async def receive_photo(message: Message, state: FSMContext):
-    data = await state.get_data()
-    if data.get("media_type") != "photo":
-        await message.answer("❌ Iltimos, faqat video yuboring!")
-        return
-    photos = data.get("photos", [])
-    if len(photos) >= 3:
-        await message.answer("❌ Maksimum 3 ta rasm.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➡️ Davom etish", callback_data="continue_process")]]))
-        return
-    
-    photos.append(message.photo[-1].file_id)
-    await state.update_data(photos=photos)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➡️ Davom etish", callback_data="continue_process")]])
-    await message.answer(f"✅ <b>{len(photos)}-rasm qabul qilindi.</b> Yana yuborishingiz yoki davom etishingiz mumkin.", reply_markup=kb)
+                # 2. Telefon raqam band emasligini tekshirish
+                phone_taken = await conn.fetchval(
+                    "SELECT id FROM users WHERE phone = $1", phone
+                )
+                if phone_taken:
+                    raise ValueError("Bu telefon raqam boshqa foydalanuvchiga tegishli!")
 
-@router.message(AdStates.waiting_media, F.video)
-async def receive_video(message: Message, state: FSMContext):
-    data = await state.get_data()
-    if data.get("media_type") != "video":
-        await message.answer("❌ Iltimos, faqat rasm yuboring!")
-        return
-    if message.video.duration > 60:
-        await message.answer("❌ Video 1 daqiqadan oshmasligi kerak.")
-        return
-    
-    await state.update_data(photos=[message.video.file_id])
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➡️ Davom etish", callback_data="continue_process")]])
-    await message.answer("✅ <b>Video qabul qilindi.</b>", reply_markup=kb)
+                # 3. Referrer mavjudligini tekshirish
+                if referrer_id:
+                    exists = await conn.fetchval(
+                        "SELECT 1 FROM users WHERE id = $1", referrer_id
+                    )
+                    if not exists:
+                        referrer_id = None
 
-@router.callback_query(AdStates.waiting_media, F.data == "continue_process")
-async def process_continue_media(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    if not data.get("photos"):
-        await safe_answer(call, "❌ Iltimos, media yuboring!", show_alert=True)
-        return
-    await safe_edit_text(call.message, Texts.BREED_ASK, reply_markup=get_breed_kb(0))
-    await state.set_state(AdStates.choosing_breed)
+                # 4. Yangi foydalanuvchi yaratish
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO users (id, username, full_name, phone, referred_by)
+                    VALUES ($1, $2, $3, $4, $5)
+                    RETURNING *
+                    """,
+                    telegram_id, username, full_name, phone, referrer_id,
+                )
+                user = dict(row)
 
-@router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_page_"))
-async def breed_page(call: CallbackQuery):
-    page = int(call.data.split("_")[2])
-    await call.message.edit_reply_markup(reply_markup=get_breed_kb(page))
+                # 5. Referral ball qo'shish
+                if referrer_id:
+                    try:
+                        await conn.execute(
+                            "INSERT INTO referrals (referrer_id, referred_id) VALUES ($1, $2)",
+                            referrer_id, telegram_id,
+                        )
+                        await conn.execute(
+                            "UPDATE users SET score = score + 1 WHERE id = $1", referrer_id
+                        )
+                    except asyncpg.UniqueViolationError:
+                        pass
 
-@router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_") & ~F.data.startswith("breed_page_") & ~F.data.startswith("breed_custom"))
-async def process_breed(call: CallbackQuery, state: FSMContext):
-    parts = call.data.split("_")
-    breed = DataLists.BREEDS[int(parts[1])][int(parts[2])]
-    await state.update_data(breed=breed)
-    await safe_edit_text(call.message, Texts.AGE_ASK, reply_markup=get_age_kb())
-    await state.set_state(AdStates.choosing_age)
+        return user
 
-@router.callback_query(AdStates.choosing_breed, F.data == "breed_custom")
-async def custom_breed(call: CallbackQuery, state: FSMContext):
-    await safe_edit_text(call.message, Texts.BREED_CUSTOM_ASK, reply_markup=None)
-    await state.set_state(AdStates.custom_breed)
+    async def update_user_balance(
+        self, user_id: int, amount: int, operation: str = "add"
+    ) -> int:
+        if amount < 0:
+            raise ValueError("Summa manfiy bo'lishi mumkin emas")
 
-@router.message(AdStates.custom_breed)
-async def process_custom_breed(message: Message, state: FSMContext):
-    await state.update_data(breed=message.text)
-    await message.answer(Texts.AGE_ASK, reply_markup=get_age_kb())
-    await state.set_state(AdStates.choosing_age)
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                if operation == "subtract":
+                    row = await conn.fetchrow(
+                        """
+                        UPDATE users
+                        SET balance = balance - $1, spent = spent + $1
+                        WHERE id = $2 AND balance >= $1
+                        RETURNING balance
+                        """,
+                        amount, user_id,
+                    )
+                    if not row:
+                        raise ValueError("Balansda mablag' yetarli emas")
+                else:
+                    row = await conn.fetchrow(
+                        "UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance",
+                        amount, user_id,
+                    )
+                    if not row:
+                        raise ValueError("Foydalanuvchi topilmadi")
+        return row["balance"]
 
-@router.callback_query(AdStates.choosing_age, F.data.startswith("age_"))
-async def process_age(call: CallbackQuery, state: FSMContext):
-    age = call.data.replace("age_", "").replace("_", " ")
-    await state.update_data(age=age)
-    await safe_edit_text(call.message, Texts.HEALTH_ASK, reply_markup=get_simple_kb([("Sog'lom", "soglom"), ("Kasal", "kasal")], "health"))
-    await state.set_state(AdStates.choosing_health)
+    async def check_mute(self, user_id: int) -> bool:
+        async with self.pool.acquire() as conn:
+            until = await conn.fetchval(
+                "SELECT mute_until FROM users WHERE id = $1", user_id
+            )
+        if not until:
+            return False
+        return until > datetime.utcnow()
 
-@router.callback_query(AdStates.choosing_health, F.data.startswith("health_"))
-async def process_health(call: CallbackQuery, state: FSMContext):
-    await state.update_data(health="Sog'lom" if "soglom" in call.data else "Kasal")
-    await safe_edit_text(call.message, Texts.GENDER_ASK, reply_markup=get_simple_kb([("♀️ Qiz bola", "qiz"), ("♂️ O'g'il bola", "ogil")], "gender"))
-    await state.set_state(AdStates.choosing_gender)
+    async def mute_user(self, user_id: int, hours: int = 24) -> bool:
+        until = datetime.utcnow() + timedelta(hours=hours)
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE users SET mute_until = $1 WHERE id = $2", until, user_id
+            )
+        return result != "UPDATE 0"
 
-@router.callback_query(AdStates.choosing_gender, F.data.startswith("gender_"))
-async def process_gender(call: CallbackQuery, state: FSMContext):
-    await state.update_data(gender="Qiz bola" if "qiz" in call.data else "O'g'il bola")
-    await safe_edit_text(call.message, Texts.STERILIZATION_ASK, reply_markup=get_simple_kb([("✅ Nasl olsa bo'ladi", "yes"), ("❌ Nasl olsa bo'lmaydi", "no")], "sterilization"))
-    await state.set_state(AdStates.choosing_sterilization)
+    async def add_warning(self, user_id: int) -> int:
+        async with self.pool.acquire() as conn:
+            count = await conn.fetchval(
+                "UPDATE users SET warn_count = warn_count + 1 WHERE id = $1 RETURNING warn_count",
+                user_id,
+            )
+        return count or 0
 
-@router.callback_query(AdStates.choosing_sterilization, F.data.startswith("sterilization_"))
-async def process_sterilization(call: CallbackQuery, state: FSMContext):
-    await state.update_data(sterilization="Nasl olish mumkin" if "yes" in call.data else "Nasl olish mumkin emas")
-    await safe_edit_text(call.message, Texts.ADDRESS_ASK, reply_markup=get_viloyat_kb())
-    await state.set_state(AdStates.waiting_address)
+    async def block_user(self, user_id: int) -> bool:
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE users SET is_banned = TRUE WHERE id = $1", user_id
+            )
+        return result != "UPDATE 0"
 
-@router.callback_query(AdStates.waiting_address, F.data.startswith("viloyat_"))
-async def process_address(call: CallbackQuery, state: FSMContext):
-    await state.update_data(address=call.data.replace("viloyat_", "").replace("_", " ").title())
-    await safe_edit_text(call.message, Texts.AD_PHONE_ASK, reply_markup=None)
-    await state.set_state(AdStates.waiting_phone)
+    async def unblock_user(self, user_id: int) -> bool:
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE users SET is_banned = FALSE WHERE id = $1", user_id
+            )
+        return result != "UPDATE 0"
 
-@router.message(AdStates.waiting_phone)
-async def process_ad_phone(message: Message, state: FSMContext):
-    digits = re.sub(r"\D", "", message.text or "")
-    if len(digits) != 12 or not digits.startswith("998"):
-        await message.answer(Texts.AD_PHONE_INVALID)
-        return
-    await state.update_data(phone=f"+{digits}")
-    data = await state.get_data()
-    if data.get("ad_type") == "hadiya":
-        await send_ad_preview(message, state)
-    else:
-        await message.answer(Texts.CURRENCY_ASK, reply_markup=get_simple_kb([("🇺🇿 So'mda", "som"), ("💵 Dollarda", "dollar")], "valyuta"))
-        await state.set_state(AdStates.choosing_currency)
+    async def add_score_by_phone_batch(self, phone: str, score: int) -> bool:
+        digits = "".join(c for c in phone if c.isdigit())
+        if len(digits) < 9:
+            return False
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE users SET score = score + $1 WHERE phone LIKE $2",
+                score, f"%{digits[-9:]}",
+            )
+        return result != "UPDATE 0"
 
-@router.callback_query(AdStates.choosing_currency, F.data.startswith("valyuta_"))
-async def process_currency(call: CallbackQuery, state: FSMContext):
-    await state.update_data(currency="so'm" if "som" in call.data else "$")
-    await safe_edit_text(call.message, Texts.PRICE_ASK, reply_markup=None)
-    await state.set_state(AdStates.waiting_price)
+    async def get_top_users(self, limit: int = 50) -> list:
+        """Reyting uchun eng yaxshi foydalanuvchilar."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM users ORDER BY score DESC, user_number ASC LIMIT $1",
+                limit
+            )
+        return [dict(r) for r in rows]
 
-@router.message(AdStates.waiting_price)
-async def process_price(message: Message, state: FSMContext):
-    if not (message.text or "").isdigit():
-        await message.answer(Texts.PRICE_INVALID)
-        return
-    await state.update_data(price=message.text)
-    await send_ad_preview(message, state)
+    async def get_top_10_users(self) -> list:
+        """Eski kod bilan moslik uchun."""
+        return await self.get_top_users(limit=10)
 
-async def send_ad_preview(message: Message, state: FSMContext):
-    data = await state.get_data()
-    user = await db.get_user(message.from_user.id if message.from_user else message.chat.id)
-    price = data.get("bot_price", 0)
-    
-    address_safe = html_escape(str(data.get('address') or '—'))
-    phone_safe = html_escape(str(data.get('phone') or '—'))
-    price_safe = html_escape(str(data.get('price') or '0'))
-    currency_safe = html_escape(str(data.get('currency') or "so'm"))
-    breed_safe = html_escape(str(data.get('breed') or '—'))
-    age_safe = html_escape(str(data.get('age') or '—'))
-    gender_safe = html_escape(str(data.get('gender') or '—'))
-    health_safe = html_escape(str(data.get('health') or '—'))
-    sterilization_safe = html_escape(str(data.get('sterilization') or '—'))
+    async def get_all_users(self) -> list:
+        """Admin panel uchun barcha foydalanuvchilar."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT * FROM users ORDER BY registered_at DESC")
+        return [dict(r) for r in rows]
 
-    caption = "📋 <b>Ma'lumotlaringizni tekshiring:</b>\n\n"
-    caption += f"📍 Manzil: {address_safe}\n📞 Tel: {phone_safe}\n"
-    if data.get("ad_type") != "hadiya":
-        caption += f"💰 Narx: {price_safe} {currency_safe}\n"
-    caption += f"🐱 Zot: {breed_safe}\n🎂 Yosh: {age_safe}\n👤 Jins: {gender_safe}\n❤️ Sog'liq: {health_safe}\n🧬 Nasl: {sterilization_safe}\n\n"
-    
-    if price > 0:
-        caption += f"💳 <b>Hisobingiz:</b> {user['balance']:,} so'm\n"
-        caption += f"💸 <b>Yechiladi:</b> {price:,} so'm\n\n"
-        if user['balance'] < price:
-            caption += "❌ <b>Diqqat! Mablag' yetarli emas. Iltimos, hisobni to'ldiring.</b>"
-        else:
-            caption += "❓ <b>Shuncha summa yechishga tayyormisiz?</b>"
-    
-    photos = data.get("photos", [])
-    kb = get_preview_kb(user['balance'], price)
-    
-    if photos:
-        if data.get("media_type") == "video":
-            await message.answer_video(video=photos[0], caption=caption, reply_markup=kb)
-        else:
-            await message.answer_photo(photo=photos[0], caption=caption, reply_markup=kb)
-    else:
-        await message.answer(caption, reply_markup=kb)
-    await state.set_state(AdStates.preview)
+    async def get_top_participants(self, min_score: int = 15) -> list:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM users WHERE score >= $1 ORDER BY score DESC",
+                min_score,
+            )
+        return [dict(r) for r in rows]
 
-@router.callback_query(AdStates.preview, F.data == "preview_confirm")
-async def confirm_ad(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user = await db.get_user(call.from_user.id)
-    price = data.get("bot_price", 0)
-    
-    if user["balance"] < price:
-        await safe_answer(call, "❌ Hisobingizda mablag' yetarli emas!", show_alert=True)
-        return
+    async def get_referrals_by_user(self, user_id: int) -> list:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT u.*, r.created_at AS referred_at
+                FROM referrals r
+                JOIN users u ON u.id = r.referred_id
+                WHERE r.referrer_id = $1
+                ORDER BY r.created_at DESC
+                """,
+                user_id,
+            )
+        return [dict(r) for r in rows]
+
+    async def get_referrer_of_user(self, user_id: int) -> Optional[dict]:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT u.* FROM referrals r
+                JOIN users u ON u.id = r.referrer_id
+                WHERE r.referred_id = $1
+                """,
+                user_id,
+            )
+        return dict(row) if row else None
+
+    # ==========================================================================
+    # ADS (E'LONLAR)
+    # ==========================================================================
+
+    async def create_ad(self, **kwargs) -> dict:
+        user_id = kwargs.get("user_id")
+        ad_type = kwargs.get("ad_type", "sotish")
+        tariff = kwargs.get("tariff", "bot")
         
-    if price > 0:
-        try:
-            await db.update_user_balance(user["id"], price, "subtract")
-        except Exception:
-            await safe_answer(call, "❌ Mablag' yechishda xatolik!", show_alert=True)
+        photos = kwargs.get("photos") or []
+        cats_data = kwargs.get("cats_data") or []
+        
+        # Eski kompatibilik uchun
+        breed = kwargs.get("breed")
+        age = kwargs.get("age")
+        gender = kwargs.get("gender")
+        health = kwargs.get("health")
+        sterilization = kwargs.get("sterilization")
+        
+        address = kwargs.get("address")
+        phone = kwargs.get("phone")
+        price = str(kwargs.get("price", "0"))
+        currency = kwargs.get("currency", "so'm")
+        ad_number = kwargs.get("ad_number")
+        cat_count = int(kwargs.get("cat_count", 1) or 1)
+        price_paid = int(kwargs.get("price_paid", 0) or 0)
+
+        photos_json = json.dumps(photos, ensure_ascii=False)
+        cats_data_json = json.dumps(cats_data, ensure_ascii=False)
+
+        expires_at = None
+        if tariff in ("web_only", "web_and_channel"):
+            expires_at = datetime.utcnow() + timedelta(days=Settings.WEB_AD_DAYS)
+
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO ads (
+                        user_id, ad_type, tariff, photos, cats_data, breed, age, gender,
+                        health, sterilization, address, phone, price, currency,
+                        ad_number, cat_count, price_paid, expires_at
+                    ) VALUES (
+                        $1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10,
+                        $11, $12, $13, $14, $15, $16, $17, $18
+                    ) RETURNING *
+                    """,
+                    user_id, ad_type, tariff, photos_json, cats_data_json, breed, age, gender,
+                    health, sterilization, address, phone, price, currency,
+                    ad_number, cat_count, price_paid, expires_at,
+                )
+                await conn.execute(
+                    "UPDATE users SET ad_count = ad_count + 1 WHERE id = $1",
+                    user_id,
+                )
+
+        return self._parse_ad(row)
+
+    async def get_ad(self, ad_id: int) -> Optional[dict]:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM ads WHERE id = $1", ad_id)
+        return self._parse_ad(row)
+
+    async def get_user_ads(self, user_id: int) -> list:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM ads WHERE user_id = $1 ORDER BY created_at DESC",
+                user_id,
+            )
+        return [self._parse_ad(r) for r in rows]
+
+    async def get_pending_ads(self) -> list:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT a.*, u.user_number, u.full_name, u.username
+                FROM ads a
+                LEFT JOIN users u ON u.id = a.user_id
+                WHERE a.status = 'pending'
+                ORDER BY a.created_at ASC
+                """
+            )
+        return [self._parse_ad(r) for r in rows]
+
+    async def get_active_web_ads(self) -> list:
+        """Web App asosiy sahifasi uchun faol e'lonlar."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT a.*, u.user_number, u.full_name
+                FROM ads a
+                LEFT JOIN users u ON u.id = a.user_id
+                WHERE a.status = 'approved'
+                  AND a.tariff IN ('web_only', 'web_and_channel')
+                  AND (a.expires_at IS NULL OR a.expires_at > NOW())
+                ORDER BY a.created_at DESC
+                LIMIT 200
+                """
+            )
+        return [self._parse_ad(r) for r in rows]
+
+    async def get_all_ads(self) -> list:
+        """Admin panel uchun barcha e'lonlar."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT a.*, u.user_number, u.full_name, u.username
+                FROM ads a
+                LEFT JOIN users u ON u.id = a.user_id
+                ORDER BY a.created_at DESC
+                """
+            )
+        return [self._parse_ad(r) for r in rows]
+
+    async def update_ad_status(
+        self,
+        ad_id: int,
+        status: str,
+        channel_message_id: Optional[int] = None,
+        reason: Optional[str] = None,
+    ):
+        async with self.pool.acquire() as conn:
+            if channel_message_id is not None:
+                await conn.execute(
+                    """
+                    UPDATE ads
+                    SET status = $1, channel_message_id = $2, reject_reason = $3
+                    WHERE id = $4
+                    """,
+                    status, channel_message_id, reason, ad_id,
+                )
+            else:
+                await conn.execute(
+                    "UPDATE ads SET status = $1, reject_reason = $2 WHERE id = $3",
+                    status, reason, ad_id,
+                )
+
+    async def update_ad_details(self, ad_id: int, **fields):
+        allowed = {
+            "breed", "age", "gender", "health", "sterilization",
+            "address", "phone", "price", "currency", "cat_count",
+        }
+        pairs = [(k, v) for k, v in fields.items() if k in allowed and v is not None]
+        if not pairs:
             return
 
-    cats_data = [{
-        "breed": data.get("breed"),
-        "age": data.get("age"),
-        "gender": data.get("gender"),
-        "health": data.get("health"),
-        "sterilization": data.get("sterilization")
-    }]
+        set_clause = ", ".join(f"{k} = ${i + 1}" for i, (k, _) in enumerate(pairs))
+        values = [v for _, v in pairs]
+        values.append(ad_id)
 
-    new_ad = await db.create_ad(
-        user_id=user["id"], ad_type=data.get("ad_type"), tariff="bot",
-        photos=data.get("photos", []), breed=data.get("breed"), age=data.get("age"),
-        gender=data.get("gender"), health=data.get("health"),
-        sterilization=data.get("sterilization"), address=data.get("address"),
-        phone=data.get("phone"), price=data.get("price", "0"),
-        currency=data.get("currency", "so'm"), ad_number=(user.get("ad_count") or 0) + 1,
-        cat_count=data.get("cat_count", 1), price_paid=price, cats_data=cats_data
-    )
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                f"UPDATE ads SET {set_clause} WHERE id = ${len(values)}",
+                *values,
+            )
 
-    await safe_delete(call.message)
-    await bot.send_message(call.from_user.id, Texts.AD_ACCEPTED)
+    async def delete_ad(self, ad_id: int):
+        async with self.pool.acquire() as conn:
+            await conn.execute("DELETE FROM ads WHERE id = $1", ad_id)
 
-    u_name_safe = html_escape(user['username'] or '—')
-    ad_type_upper = str(data.get('ad_type')).upper()
-    b_safe = html_escape(str(data.get('breed') or '—'))
-    a_safe = html_escape(str(data.get('age') or '—'))
-    addr_safe = html_escape(str(data.get('address') or '—'))
-    ph_safe = html_escape(str(data.get('phone') or '—'))
-    
-    admin_caption = f"🆕 <b>YANGI REKLAMA!</b>\n\n👤 Foydalanuvchi: #{user['user_number']} ({u_name_safe})\n📋 Turi: {ad_type_upper}\n🐱 Zot: {b_safe}\n🎂 Yosh: {a_safe}\n📍 Manzil: {addr_safe}\n📞 Tel: {ph_safe}\n"
-    
-    if data.get("ad_type") != "hadiya":
-        p_safe = html_escape(str(data.get('price') or '0'))
-        c_safe = html_escape(str(data.get('currency') or "so'm"))
-        admin_caption += f"💰 Narx: {p_safe} {c_safe}\n"
-        
-    admin_caption += f"💵 To'landi: {price:,} so'm"
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{new_ad['id']}"),
-        InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=f"admin_edit_ad_{new_ad['id']}"),
-        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"admin_decline_ad_{new_ad['id']}")
-    ]])
+    async def cleanup_expired_ads(self):
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE ads
+                SET status = 'expired'
+                WHERE status = 'approved'
+                  AND tariff IN ('web_only', 'web_and_channel')
+                  AND expires_at IS NOT NULL
+                  AND expires_at <= NOW()
+                """
+            )
 
-    photos = data.get("photos", [])
-    try:
-        if photos:
-            if data.get("media_type") == "video":
-                await bot.send_video(BotConfig.TECH_ADMIN_ID, video=photos[0], caption=admin_caption, reply_markup=kb)
-            else:
-                await bot.send_photo(BotConfig.TECH_ADMIN_ID, photo=photos[0], caption=admin_caption, reply_markup=kb)
-        else:
-            await bot.send_message(BotConfig.TECH_ADMIN_ID, admin_caption, reply_markup=kb)
-    except Exception as e:
-        logger.error(f"Admin xabar yuborishda xato: {e}")
+    # ==========================================================================
+    # SETTINGS (SOZLAMALAR)
+    # ==========================================================================
 
-    await state.clear()
+    async def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        async with self.pool.acquire() as conn:
+            val = await conn.fetchval("SELECT value FROM settings WHERE key = $1", key)
+        return val if val is not None else default
 
-@router.callback_query(F.data.startswith("admin_approve_ad_"))
-async def tech_admin_approve(call: CallbackQuery):
-    if call.from_user.id not in BotConfig.ADMIN_IDS:
-        await safe_answer(call, "Ruxsat yo'q", show_alert=True)
-        return
-    ad_id = int(call.data.split("_")[3])
-    
-    ad = await db.get_ad(ad_id)
-    if not ad: 
-        await safe_answer(call, "E'lon topilmadi", show_alert=True)
-        return
-    if ad["status"] != "pending":
-        await call.message.edit_reply_markup(reply_markup=None)
-        await safe_answer(call, "⚠️ Bu e'lon allaqachon tasdiqlangan yoki rad etilgan!", show_alert=True)
-        return
+    async def set_setting(self, key: str, value: str):
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO settings (key, value) VALUES ($1, $2)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+                """,
+                key, value,
+            )
 
-    try:
-        await call.message.edit_reply_markup(reply_markup=None)
-    except:
-        pass
+    # ==========================================================================
+    # CARDS (KARTALAR)
+    # ==========================================================================
 
-    try:
-        sent = await post_to_channel(ad)
-        await db.update_ad_status(ad_id, "approved", channel_message_id=sent.message_id)
-        
-        ch_id_str = str(BotConfig.CHANNEL_SOTISH_ID if ad["ad_type"] == "sotish" else BotConfig.CHANNEL_HADIYA_ID).replace("-100", "")
-        post_link = f"https://t.me/c/{ch_id_str}/{sent.message_id}"
-        
-        action_text = "Berib bo'ldim" if ad["ad_type"] == "hadiya" else "Sotildi"
-        user_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"✅ {action_text}", callback_data=f"user_ad_done_{ad_id}")],
-            [InlineKeyboardButton(text="👁 Reklamani ko'rish", url=post_link)],
-            [InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="menu_back_to_main")]
-        ])
-        await bot.send_message(ad["user_id"], f"✅ <b>Sizning e'loningiz tasdiqlandi va kanalga joylandi!</b>\n\n<i>E'lon o'z joyiga ega bo'lgach, «{action_text}» tugmasini bosing.</i>", reply_markup=user_kb)
-        
-        await safe_answer(call, "✅ Kanalga yuborildi!", show_alert=False)
-    except Exception as e:
-        await safe_answer(call, f"❌ Xato: {e}", show_alert=True)
+    async def get_active_card(self) -> Optional[dict]:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM cards WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 1"
+            )
+        return dict(row) if row else None
 
-@router.callback_query(F.data.startswith("admin_decline_ad_"))
-async def tech_admin_decline(call: CallbackQuery, state: FSMContext):
-    if call.from_user.id not in BotConfig.ADMIN_IDS:
-        return
-    ad_id = int(call.data.split("_")[3])
-    
-    try:
-        await call.message.edit_reply_markup(reply_markup=None)
-    except:
-        pass
-    
-    await state.update_data(decline_ad_id=ad_id)
-    await call.message.reply("Rad etish sababini yozing:")
-    await state.set_state(AdminStates.decline_reason)
+    async def get_all_cards(self) -> list:
+        """Admin panel uchun barcha kartalar."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT * FROM cards ORDER BY created_at DESC")
+        return [dict(r) for r in rows]
 
-@router.message(AdminStates.decline_reason)
-async def process_decline_reason(message: Message, state: FSMContext):
-    ad_id = (await state.get_data()).get("decline_ad_id")
-    ad = await db.get_ad(ad_id)
-    
-    await db.update_ad_status(ad_id, "rejected", reason=message.text)
-    
-    if ad and ad.get("price_paid", 0) > 0:
-        await db.update_user_balance(ad["user_id"], ad["price_paid"], "add")
-        await bot.send_message(ad["user_id"], f"❌ <b>E'loningiz rad etildi.</b>\n\nSabab: {html_escape(message.text)}\n\nHisobingizga {ad['price_paid']:,} so'm qaytarildi.")
-    elif ad:
-        await bot.send_message(ad["user_id"], f"❌ <b>E'loningiz rad etildi.</b>\n\nSabab: {html_escape(message.text)}")
+    async def add_card(self, number: str, holder: str) -> int:
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute("UPDATE cards SET is_active = FALSE")
+                row = await conn.fetchrow(
+                    "INSERT INTO cards (number, holder, is_active) VALUES ($1, $2, TRUE) RETURNING id",
+                    number, holder,
+                )
+        return row["id"]
 
-    await message.answer("✅ Rad etildi va pul qaytarildi.")
-    await state.clear()
+    async def delete_card(self, card_id: int) -> bool:
+        async with self.pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM cards WHERE id = $1", card_id)
+        return result != "DELETE 0"
 
-@router.callback_query(F.data.startswith("admin_edit_ad_"))
-async def admin_edit_ad_menu(call: CallbackQuery, state: FSMContext):
-    if call.from_user.id not in BotConfig.ADMIN_IDS:
-        return
-    ad_id = int(call.data.split("_")[3])
-    await state.update_data(edit_ad_id=ad_id)
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🐱 Zotni o'zgartirish", callback_data="edit_field_breed"), InlineKeyboardButton(text="🎂 Yoshni o'zgartirish", callback_data="edit_field_age")],
-        [InlineKeyboardButton(text="📍 Manzilni o'zgartirish", callback_data="edit_field_address"), InlineKeyboardButton(text="📞 Telefonni o'zgartirish", callback_data="edit_field_phone")],
-        [InlineKeyboardButton(text="💰 Narxni o'zgartirish", callback_data="edit_field_price")],
-        [InlineKeyboardButton(text="↩️ Bekor qilish", callback_data="admin_cancel_edit")]
-    ])
-    await call.message.reply("✏️ <b>Qaysi maydonni o'zgartirmoqchisiz?</b>", reply_markup=kb)
-    await state.set_state(AdminStates.editing_ad_field)
+    # ==========================================================================
+    # PAYMENTS (TO'LOVLAR)
+    # ==========================================================================
 
-@router.callback_query(AdminStates.editing_ad_field, F.data.startswith("edit_field_"))
-async def admin_edit_field_choose(call: CallbackQuery, state: FSMContext):
-    field = call.data.replace("edit_field_", "")
-    await state.update_data(edit_field=field)
-    
-    field_names = {"breed": "Zotni", "age": "Yoshni", "address": "Manzilni", "phone": "Telefon raqamni", "price": "Narxni"}
-    await safe_edit_text(call.message, f"Yangi {field_names.get(field, 'qiymatni')} kiriting:")
-    await state.set_state(AdminStates.editing_ad_value)
+    async def create_payment_request(
+        self, user_id: int, amount: int, card_id: int, card_last4: str
+    ) -> int:
+        expires_at = datetime.utcnow() + timedelta(minutes=Settings.TOPUP_TIMER_MINUTES)
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO payments (user_id, amount, card_id, card_last4, expires_at)
+                VALUES ($1, $2, $3, $4, $5) RETURNING id
+                """,
+                user_id, amount, card_id, card_last4, expires_at,
+            )
+        return row["id"]
 
-@router.message(AdminStates.editing_ad_value)
-async def admin_edit_value_save(message: Message, state: FSMContext):
-    data = await state.get_data()
-    ad_id, field = data.get("edit_ad_id"), data.get("edit_field")
-    
-    await db.update_ad_details(ad_id, **{field: message.text})
-    await message.answer("✅ Muvaffaqiyatli o'zgartirildi!")
-    
-    ad = await db.get_ad(ad_id)
-    
-    u_id = ad['user_id']
-    b_safe = html_escape(str(ad.get('breed') or '—'))
-    a_safe = html_escape(str(ad.get('age') or '—'))
-    addr_safe = html_escape(str(ad.get('address') or '—'))
-    ph_safe = html_escape(str(ad.get('phone') or '—'))
-    p_safe = html_escape(str(ad.get('price') or '0'))
-    c_safe = html_escape(str(ad.get('currency') or "so'm"))
+    async def attach_receipt(self, payment_id: int, file_name: str):
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE payments SET receipt_file_id = $1 WHERE id = $2",
+                file_name, payment_id,
+            )
 
-    admin_caption = f"🔄 <b>YANGILANGAN REKLAMA!</b>\n\n👤 User ID: {u_id}\n🐱 Zot: {b_safe}\n🎂 Yosh: {a_safe}\n📍 Manzil: {addr_safe}\n📞 Tel: {ph_safe}\n💰 Narx: {p_safe} {c_safe}\n"
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{ad_id}"),
-        InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=f"admin_edit_ad_{ad_id}"),
-        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"admin_decline_ad_{ad_id}")
-    ]])
-    
-    photos = ad.get("photos") or []
-    if isinstance(photos, str): 
-        try:
-            photos = json.loads(photos)
-        except:
-            photos = []
-    
-    if photos:
-        if len(photos[0]) > 50:
-            await message.answer_video(video=photos[0], caption=admin_caption, reply_markup=kb)
-        else:
-            await message.answer_photo(photo=photos[0], caption=admin_caption, reply_markup=kb)
-    else:
-        await message.answer(admin_caption, reply_markup=kb)
-    await state.clear()
+    async def match_userbot_payment(self, amount: int, last4: str) -> Optional[int]:
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """
+                    SELECT id, user_id FROM payments
+                    WHERE status = 'pending'
+                      AND amount = $1
+                      AND card_last4 = $2
+                      AND userbot_matched = FALSE
+                      AND (expires_at IS NULL OR expires_at > NOW())
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                    FOR UPDATE
+                    """,
+                    amount, last4,
+                )
 
-@router.callback_query(F.data == "admin_cancel_edit")
-async def admin_cancel_edit(call: CallbackQuery, state: FSMContext):
-    await safe_delete(call.message)
-    await state.clear()
+                if not row:
+                    await conn.execute(
+                        "INSERT INTO userbot_payments (amount, last4, matched) VALUES ($1, $2, FALSE)",
+                        amount, last4,
+                    )
+                    return None
 
-@router.callback_query(F.data == "admin_panel")
-async def admin_panel(call: CallbackQuery):
-    if call.from_user.id not in BotConfig.ADMIN_IDS:
-        return
-    stats = await db.get_statistics()
-    text = f"👨‍💼 <b>Admin Paneli</b>\n\n👥 Foydalanuvchilar: {stats['total_users']}\n📢 Jami reklamalar: {stats['total_ads']}\n\n💰 <b>Bugungi tushum:</b> {stats['today_income']:,} so'm\n💵 <b>Oylik tushum:</b> {stats['month_income']:,} so'm"
-    
-    rows = [
-        [InlineKeyboardButton(text="⚙️ Bot holati", callback_data="admin_toggle_bot")],
-        [InlineKeyboardButton(text="💳 Hisob qo'shish", callback_data="admin_add_balance")],
-        [InlineKeyboardButton(text="➕ Ball qo'shish", callback_data="admin_add_score")],
-    ]
-    if call.from_user.id == BotConfig.TECH_ADMIN_ID:
-        rows.append([InlineKeyboardButton(text="👨‍💻 Texnik Admin", callback_data="tech_admin_panel")])
-    rows.append([InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")])
-    await safe_edit_text(call.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+                payment_id = row["id"]
+                user_id = row["user_id"]
 
-@router.callback_query(F.data == "admin_toggle_bot")
-async def admin_toggle_bot(call: CallbackQuery):
-    if call.from_user.id not in BotConfig.ADMIN_IDS:
-        return
-    current = await db.get_setting("bot_enabled", "1")
-    new_val = "0" if current == "1" else "1"
-    await db.set_setting("bot_enabled", new_val)
-    await safe_answer(call, "✅ Bot yoqildi!" if new_val == "1" else "🔴 Bot o'chirildi!", show_alert=True)
+                await conn.execute(
+                    "UPDATE payments SET status = 'paid', userbot_matched = TRUE WHERE id = $1",
+                    payment_id,
+                )
+                await conn.execute(
+                    "UPDATE users SET balance = balance + $1 WHERE id = $2",
+                    amount, user_id,
+                )
+                await conn.execute(
+                    "INSERT INTO userbot_payments (amount, last4, matched_user_id, matched) VALUES ($1, $2, $3, TRUE)",
+                    amount, last4, user_id,
+                )
 
-@router.callback_query(F.data == "admin_add_balance")
-async def admin_add_balance_start(call: CallbackQuery, state: FSMContext):
-    if call.from_user.id not in BotConfig.ADMIN_IDS:
-        return
-    await safe_edit_text(call.message, "💳 <b>Hisob qo'shish</b>\n\nFoydalanuvchi Telegram ID sini kiriting:\n(Masalan: <code>673018191</code>)\n\n/cancel — bekor qilish", reply_markup=None)
-    await state.set_state(AdminStates.add_balance_user_id)
+        return user_id
 
-@router.message(AdminStates.add_balance_user_id)
-async def admin_add_balance_user(message: Message, state: FSMContext):
-    if (message.text or "") == "/cancel":
-        await state.clear()
-        await message.answer("Bekor qilindi.")
-        return
-    if not (message.text or "").isdigit():
-        await message.answer("❌ Faqat raqam kiriting:")
-        return
-    uid = int(message.text)
-    user = await db.get_user(uid)
-    if not user:
-        await message.answer("❌ Bunday ID li foydalanuvchi topilmadi.")
-        return
-    await state.update_data(target_user_id=uid)
-    await message.answer(f"👤 #{user['user_number']} ({html_escape(user['username'] or '—')})\n\nSumma kiriting (ayirish uchun <code>-50000</code>):")
-    await state.set_state(AdminStates.add_balance_amount)
+    # ==========================================================================
+    # STATISTIKA (Admin Panel uchun kengaytirilgan)
+    # ==========================================================================
 
-@router.message(AdminStates.add_balance_amount)
-async def admin_add_balance_amount(message: Message, state: FSMContext):
-    if (message.text or "") == "/cancel":
-        await state.clear()
-        await message.answer("Bekor qilindi.")
-        return
-    try:
-        amount = int(message.text)
-    except:
-        await message.answer("❌ Noto'g'ri summa.")
-        return
-    
-    uid = (await state.get_data()).get("target_user_id")
-    op = "add" if amount > 0 else "subtract"
-    try:
-        new_bal = await db.update_user_balance(uid, abs(amount), op)
-        msg = f"✅ Hisobingizga {amount:,} so'm qo'shildi." if amount > 0 else f"⚠️ Hisobingizdan {abs(amount):,} so'm yechildi."
-        try:
-            await bot.send_message(uid, f"{msg}\n\n💰 Joriy balans: {new_bal:,} so'm")
-        except:
-            pass
-        await message.answer(f"✅ Bajarildi!\nYangi balans: {new_bal:,} so'm")
-    except Exception as e:
-        await message.answer(f"❌ Xatolik: {e}")
-    await state.clear()
+    async def get_statistics(self) -> dict:
+        """Admin panel uchun barcha kerakli statistik ma'lumotlar."""
+        async with self.pool.acquire() as conn:
+            # Asosiy raqamlar
+            total_users = await conn.fetchval("SELECT COUNT(*) FROM users") or 0
+            total_ads = await conn.fetchval("SELECT COUNT(*) FROM ads") or 0
+            pending_ads = await conn.fetchval("SELECT COUNT(*) FROM ads WHERE status = 'pending'") or 0
+            total_cards = await conn.fetchval("SELECT COUNT(*) FROM cards") or 0
 
-@router.callback_query(F.data == "admin_add_score")
-async def admin_add_score(call: CallbackQuery, state: FSMContext):
-    if call.from_user.id not in BotConfig.ADMIN_IDS:
-        return
-    await safe_edit_text(call.message, "📊 <b>Ball qo'shish</b>\n\nFormat: <code>+998901234567 - 17</code>\n\n/cancel — bekor qilish", reply_markup=None)
-    await state.set_state(AdminStates.add_score_batch)
+            # Tushumlar (faqat to'langan e'lonlar hisobga olinadi)
+            today_income = await conn.fetchval(
+                "SELECT COALESCE(SUM(price_paid), 0) FROM ads WHERE price_paid > 0 AND created_at >= CURRENT_DATE"
+            ) or 0
+            
+            yesterday_income = await conn.fetchval(
+                """
+                SELECT COALESCE(SUM(price_paid), 0) FROM ads 
+                WHERE price_paid > 0 
+                  AND created_at >= CURRENT_DATE - INTERVAL '1 day' 
+                  AND created_at < CURRENT_DATE
+                """
+            ) or 0
 
-@router.message(AdminStates.add_score_batch)
-async def process_add_score(message: Message, state: FSMContext):
-    if (message.text or "") == "/cancel":
-        await state.clear()
-        await message.answer("Bekor qilindi.")
-        return
-    m = re.search(r"(\+?\d{9,15})\s*[-–—]?\s*(-?\d+)", message.text or "")
-    if not m:
-        await message.answer("❌ Format xato. Namuna: <code>+998901234567 - 17</code>")
-        return
-    ok = await db.add_score_by_phone_batch(m.group(1), int(m.group(2)))
-    await message.answer("✅ Ball qo'shildi!" if ok else "❌ Topilmadi.")
-    await state.clear()
+            week_income = await conn.fetchval(
+                "SELECT COALESCE(SUM(price_paid), 0) FROM ads WHERE price_paid > 0 AND created_at >= CURRENT_DATE - INTERVAL '7 days'"
+            ) or 0
 
-@dp.startup()
-async def on_startup():
-    await db.connect()
-    try:
-        await bot.set_my_commands([BotCommand(command="start", description="Botni ishga tushirish")])
-    except:
-        pass
-    logger.info("🚀 Bot polling boshlandi")
+            month_income = await conn.fetchval(
+                "SELECT COALESCE(SUM(price_paid), 0) FROM ads WHERE price_paid > 0 AND created_at >= CURRENT_DATE - INTERVAL '30 days'"
+            ) or 0
 
-    try:
-        async with db.pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT session_string FROM userbot_sessions WHERE is_active = TRUE LIMIT 1")
-        if row and row["session_string"]:
-            await start_userbot(row["session_string"])
-    except Exception as e:
-        logger.warning(f"Userbot yuklashda xato: {e}")
+            year_income = await conn.fetchval(
+                "SELECT COALESCE(SUM(price_paid), 0) FROM ads WHERE price_paid > 0 AND created_at >= CURRENT_DATE - INTERVAL '1 year'"
+            ) or 0
 
-@dp.shutdown()
-async def on_shutdown():
-    if userbot_client and userbot_client.is_connected():
-        await userbot_client.disconnect()
-    await db.disconnect()
+            total_income = await conn.fetchval(
+                "SELECT COALESCE(SUM(price_paid), 0) FROM ads WHERE price_paid > 0"
+            ) or 0
 
-async def main():
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        return {
+            "total_users": int(total_users),
+            "total_ads": int(total_ads),
+            "pending_ads": int(pending_ads),
+            "total_cards": int(total_cards),
+            "today_income": int(today_income),
+            "yesterday_income": int(yesterday_income),
+            "week_income": int(week_income),
+            "month_income": int(month_income),
+            "year_income": int(year_income),
+            "total_income": int(total_income),
+        }
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    # ==========================================================================
+    # RESET (Faqat favqulodda holatlar uchun)
+    # ==========================================================================
+
+    async def reset_tables(self):
+        if self.pool is None:
+            raise RuntimeError("Pool yaratilmagan. Avval connect() chaqiring.")
+        async with self.pool.acquire() as conn:
+            for tbl in (
+                "userbot_payments", "referrals", "payments", "ads",
+                "cards", "userbot_sessions", "settings", "users",
+            ):
+                await conn.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
+        await self._create_tables()
+        logger.warning("⚠️ Barcha jadvallar qayta yaratildi (ma'lumotlar o'chirildi)")
+
+# ==============================================================================
+# MODUL DARAJASIDA YAGONA INSTANSIYA
+# ==============================================================================
+db = Database()
