@@ -1,7 +1,7 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: db.py
-# TAVSIF: PostgreSQL + asyncpg — to'liq ishchi, xatosiz, barcha metodlar
+# TAVSIF: PostgreSQL + asyncpg — to'liq ishchi, barcha xatolar va migratsiyalar bilan
 # ==============================================================================
 
 import asyncio
@@ -17,17 +17,13 @@ from config import BotConfig, Settings
 logger = logging.getLogger(__name__)
 
 
-# ==============================================================================
-# DATABASE KLASSI
-# ==============================================================================
-
 class Database:
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
         self._connect_lock = asyncio.Lock()
 
     # ==========================================================================
-    # ULANISH VA JADVALLAR YARATISH
+    # ULANISH VA JADVALLARNI YARATISH
     # ==========================================================================
 
     async def connect(self):
@@ -66,7 +62,7 @@ class Database:
             logger.info("🔌 Database pool yopildi")
 
     async def _create_tables(self):
-        """Jadvallarni yaratish. Advisory Lock bilan UniqueViolationError oldini oladi."""
+        """Jadvallarni yaratish va eski xatolarni avtomatik tuzatish (Migratsiya)."""
         async with self.pool.acquire() as conn:
             # Bir vaqtda bir nechta bot ishga tushsa ham xato bermasligi uchun lock
             await conn.execute("SELECT pg_advisory_lock(123456789)")
@@ -76,6 +72,7 @@ class Database:
                 await conn.execute("SELECT pg_advisory_unlock(123456789)")
 
     async def _run_ddl(self, conn):
+        # 1. USERS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id BIGINT PRIMARY KEY,
@@ -96,6 +93,20 @@ class Database:
             )
         """)
 
+        # 🚨 AVTOMATIK MIGRATSIYA: Agar bazada eski nom (muted_until) bo'lsa, yangilaymiz
+        await conn.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name='users' AND column_name='muted_until'
+                ) THEN
+                    ALTER TABLE users RENAME COLUMN muted_until TO mute_until;
+                END IF;
+            END $$;
+        """)
+
+        # 2. ADS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS ads (
                 id SERIAL PRIMARY KEY,
@@ -123,6 +134,7 @@ class Database:
             )
         """)
 
+        # 3. PAYMENTS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS payments (
                 id SERIAL PRIMARY KEY,
@@ -138,6 +150,7 @@ class Database:
             )
         """)
 
+        # 4. CARDS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS cards (
                 id SERIAL PRIMARY KEY,
@@ -148,6 +161,7 @@ class Database:
             )
         """)
 
+        # 5. SETTINGS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -155,6 +169,7 @@ class Database:
             )
         """)
 
+        # 6. USERBOT_SESSIONS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS userbot_sessions (
                 id SERIAL PRIMARY KEY,
@@ -165,6 +180,7 @@ class Database:
             )
         """)
 
+        # 7. REFERRALS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS referrals (
                 id SERIAL PRIMARY KEY,
@@ -174,6 +190,7 @@ class Database:
             )
         """)
 
+        # 8. USERBOT_PAYMENTS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS userbot_payments (
                 id SERIAL PRIMARY KEY,
@@ -185,7 +202,7 @@ class Database:
             )
         """)
 
-        # Indekslar
+        # INDEKSLAR
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads(user_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_tariff ON ads(tariff)")
@@ -193,10 +210,10 @@ class Database:
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_score ON users(score DESC)")
 
-        logger.info("✅ Jadvallar tayyor")
+        logger.info("✅ Jadvallar tayyor va xatolar avtomatik tuzatildi")
 
     # ==========================================================================
-    # YORDAMCHI FUNKSIYALAR
+    # YORDAMCHI
     # ==========================================================================
 
     @staticmethod
@@ -219,7 +236,7 @@ class Database:
         return d
 
     # ==========================================================================
-    # USERS
+    # USERS (FOYDALANUVCHILAR)
     # ==========================================================================
 
     async def get_user(self, telegram_id: int) -> Optional[dict]:
@@ -425,7 +442,7 @@ class Database:
         return dict(row) if row else None
 
     # ==========================================================================
-    # ADS
+    # ADS (E'LONLAR)
     # ==========================================================================
 
     async def create_ad(self, **kwargs) -> dict:
@@ -578,7 +595,7 @@ class Database:
             )
 
     # ==========================================================================
-    # SETTINGS
+    # SETTINGS (SOZLAMALAR)
     # ==========================================================================
 
     async def get_setting(self, key: str, default: Optional[str] = None) -> Optional[str]:
@@ -597,7 +614,7 @@ class Database:
             )
 
     # ==========================================================================
-    # CARDS
+    # CARDS (KARTALAR)
     # ==========================================================================
 
     async def get_active_card(self) -> Optional[dict]:
@@ -618,7 +635,7 @@ class Database:
         return row["id"]
 
     # ==========================================================================
-    # PAYMENTS
+    # PAYMENTS (TO'LOVLAR)
     # ==========================================================================
 
     async def create_payment_request(
