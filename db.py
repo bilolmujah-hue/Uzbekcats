@@ -1,8 +1,8 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: db.py
-# TAVSIF: PostgreSQL + asyncpg — to'liq ishchi, barcha migratsiyalar, yangilangan
-#         statistika, cats_data (JSONB) va barcha yordamchi funksiyalar bilan.
+# TAVSIF: PostgreSQL + asyncpg — to'liq mukammal, barcha migratsiyalar, yangilangan
+#         to'lov tizimi, statistika, cats_data (JSONB) va barcha funksiyalar bilan.
 # ==============================================================================
 
 import asyncio
@@ -62,7 +62,7 @@ class Database:
             logger.info("🔌 Database pool yopildi")
 
     async def _create_tables(self):
-        """Jadvallarni yaratish va eski xatolarni avtomatik tuzatish."""
+        """Jadvallarni yaratish va eski xatolarni avtomatik tuzatish (Migratsiya)."""
         async with self.pool.acquire() as conn:
             # Bir vaqtda bir nechta bot ishga tushsa ham xato bermasligi uchun qulf
             await conn.execute("SELECT pg_advisory_lock(987654321)")
@@ -94,28 +94,32 @@ class Database:
         """)
 
         # 🚨 ESKI BAZALARNI YANGILASH (MIGRATSIYA)
-        # Bu blok sizda chiqqan "referred_by does not exist" xatosini 100% tuzatadi.
         await conn.execute("""
             DO $$
             BEGIN
-                -- referred_by ustuni yo'q bo'lsa qo'shamiz
+                -- referred_by ustuni
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referred_by') THEN
                     ALTER TABLE users ADD COLUMN referred_by BIGINT;
                 END IF;
                 
-                -- mute_until nomi xato bo'lsa tuzatamiz (muted_until -> mute_until)
+                -- mute_until nomini tuzatish
                 IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='muted_until') THEN
                     ALTER TABLE users RENAME COLUMN muted_until TO mute_until;
                 END IF;
 
-                -- spent ustuni yo'q bo'lsa qo'shamiz
+                -- spent ustuni
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='spent') THEN
                     ALTER TABLE users ADD COLUMN spent BIGINT DEFAULT 0;
                 END IF;
 
-                -- ad_count ustuni yo'q bo'lsa qo'shamiz
+                -- ad_count ustuni
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='ad_count') THEN
                     ALTER TABLE users ADD COLUMN ad_count INT DEFAULT 0;
+                END IF;
+
+                -- warn_count ustuni (Xatoni tuzatadi)
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='warn_count') THEN
+                    ALTER TABLE users ADD COLUMN warn_count INT DEFAULT 0;
                 END IF;
             END $$;
         """)
@@ -159,7 +163,7 @@ class Database:
             END $$;
         """)
 
-        # 3. PAYMENTS JADVALI
+        # 3. PAYMENTS JADVALI (To'lovlar uchun)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS payments (
                 id SERIAL PRIMARY KEY,
@@ -170,6 +174,7 @@ class Database:
                 receipt_file_id TEXT,
                 status TEXT DEFAULT 'pending',
                 userbot_matched BOOLEAN DEFAULT FALSE,
+                admin_message_id BIGINT, -- Admin xabarini tahrirlash uchun
                 created_at TIMESTAMP DEFAULT NOW(),
                 expires_at TIMESTAMP
             )
@@ -505,7 +510,6 @@ class Database:
         photos = kwargs.get("photos") or []
         cats_data = kwargs.get("cats_data") or []
         
-        # Eski kompatibilik uchun
         breed = kwargs.get("breed")
         age = kwargs.get("age")
         gender = kwargs.get("gender")
@@ -718,12 +722,13 @@ class Database:
         return result != "DELETE 0"
 
     # ==========================================================================
-    # PAYMENTS (TO'LOVLAR)
+    # PAYMENTS (TO'LOVLAR VA TOPUP TIZIMI)
     # ==========================================================================
 
     async def create_payment_request(
         self, user_id: int, amount: int, card_id: int, card_last4: str
     ) -> int:
+        """Yangi to'lov so'rovini yaratish."""
         expires_at = datetime.utcnow() + timedelta(minutes=Settings.TOPUP_TIMER_MINUTES)
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -735,14 +740,58 @@ class Database:
             )
         return row["id"]
 
+    async def get_payment(self, payment_id: int) -> Optional[dict]:
+        """To'lov ma'lumotlarini olish."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM payments WHERE id = $1", payment_id)
+        return dict(row) if row else None
+
     async def attach_receipt(self, payment_id: int, file_name: str):
+        """To'lov chekini (rasm file_id) biriktirish."""
         async with self.pool.acquire() as conn:
             await conn.execute(
                 "UPDATE payments SET receipt_file_id = $1 WHERE id = $2",
                 file_name, payment_id,
             )
 
+    async def approve_payment(self, payment_id: int) -> Optional[dict]:
+        """To'lovni tasdiqlash va balansga pul qo'shish."""
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                payment = await conn.fetchrow(
+                    "SELECT * FROM payments WHERE id = $1 AND status = 'pending' FOR UPDATE",
+                    payment_id,
+                )
+                if not payment:
+                    return None
+
+                await conn.execute(
+                    "UPDATE payments SET status = 'paid' WHERE id = $1", payment_id
+                )
+                await conn.execute(
+                    "UPDATE users SET balance = balance + $1 WHERE id = $2",
+                    payment["amount"], payment["user_id"],
+                )
+                return dict(payment)
+
+    async def reject_payment(self, payment_id: int) -> Optional[dict]:
+        """To'lovni rad etish."""
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                payment = await conn.fetchrow(
+                    "SELECT * FROM payments WHERE id = $1 AND status = 'pending' FOR UPDATE",
+                    payment_id,
+                )
+                if not payment:
+                    return None
+
+                await conn.execute(
+                    "UPDATE payments SET status = 'cancelled' WHERE id = $1", payment_id
+                )
+                return dict(payment)
+
     async def match_userbot_payment(self, amount: int, last4: str) -> Optional[int]:
+        """Userbot orqali kelgan to'lovni avtomatik tasdiqlash."""
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 row = await conn.fetchrow(
@@ -786,19 +835,18 @@ class Database:
         return user_id
 
     # ==========================================================================
-    # STATISTIKA (Admin Panel uchun kengaytirilgan)
+    # STATISTIKA (Admin Panel uchun)
     # ==========================================================================
 
     async def get_statistics(self) -> dict:
         """Admin panel uchun barcha kerakli statistik ma'lumotlar."""
         async with self.pool.acquire() as conn:
-            # Asosiy raqamlar
             total_users = await conn.fetchval("SELECT COUNT(*) FROM users") or 0
             total_ads = await conn.fetchval("SELECT COUNT(*) FROM ads") or 0
             pending_ads = await conn.fetchval("SELECT COUNT(*) FROM ads WHERE status = 'pending'") or 0
             total_cards = await conn.fetchval("SELECT COUNT(*) FROM cards") or 0
+            pending_payments = await conn.fetchval("SELECT COUNT(*) FROM payments WHERE status = 'pending'") or 0
 
-            # Tushumlar (faqat to'langan e'lonlar hisobga olinadi)
             today_income = await conn.fetchval(
                 "SELECT COALESCE(SUM(price_paid), 0) FROM ads WHERE price_paid > 0 AND created_at >= CURRENT_DATE"
             ) or 0
@@ -833,6 +881,7 @@ class Database:
             "total_ads": int(total_ads),
             "pending_ads": int(pending_ads),
             "total_cards": int(total_cards),
+            "pending_payments": int(pending_payments),
             "today_income": int(today_income),
             "yesterday_income": int(yesterday_income),
             "week_income": int(week_income),
@@ -842,7 +891,7 @@ class Database:
         }
 
     # ==========================================================================
-    # RESET (Faqat favqulodda holatlar uchun)
+    # RESET (Favqulodda holatlar uchun)
     # ==========================================================================
 
     async def reset_tables(self):
