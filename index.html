@@ -13,7 +13,7 @@
 
     <style>
         /* =========================================================
-           GLOBAL VA MOBIL MOSLASHUV (PREMIUM DIZAYN)
+           GLOBAL VA PREMIUM DIZAYN (DARK/LIGHT)
            ========================================================= */
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -36,11 +36,9 @@
 
         html, body {
             width: 100%; height: 100%; font-family: 'Manrope', sans-serif;
-            background-color: #000; /* Kompyuterda orqa fon */
-            display: flex; justify-content: center; overflow: hidden;
+            background-color: #000; display: flex; justify-content: center; overflow: hidden;
         }
 
-        /* Telefon ramkasi */
         #app-frame {
             width: 100%; max-width: 480px; height: 100%; background: var(--bg); color: var(--text);
             position: relative; display: flex; flex-direction: column; overflow: hidden;
@@ -56,10 +54,13 @@
         /* Animatsiyalar */
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        @keyframes float { 0% { transform: translateY(0); } 50% { transform: translateY(-5px); } 100% { transform: translateY(0); } }
+        @keyframes rotateSun { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+        @keyframes moonAnim { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
 
         .page { display: none; flex: 1; overflow-y: auto; padding: 16px; }
         .page.active { display: block; animation: fadeIn 0.4s ease; }
+        .page::-webkit-scrollbar { display: none; }
 
         /* =========================================================
            HEADER
@@ -69,98 +70,111 @@
             background: var(--bg-2); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border);
             position: sticky; top: 0; z-index: 100;
         }
-        .user-info { display: flex; align-items: center; gap: 10px; }
+        .user-info { display: flex; align-items: center; gap: 12px; }
         .avatar {
-            width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), var(--cyan));
-            display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 16px;
-            overflow: hidden; border: 2px solid var(--surface);
+            width: 46px; height: 46px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), var(--cyan));
+            display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 18px;
+            overflow: hidden; border: 2px solid var(--surface); box-shadow: var(--shadow);
         }
         .avatar img { width: 100%; height: 100%; object-fit: cover; }
         .user-text { display: flex; flex-direction: column; }
-        .greeting { font-size: 9px; font-weight: 700; letter-spacing: 1px; color: var(--text-3); text-transform: uppercase; }
-        .name { font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
-        .theme-btn { width: 38px; height: 38px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-2); }
+        .greeting { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-3); text-transform: uppercase; }
+        .name { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+        
+        .theme-btn { 
+            width: 42px; height: 42px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); 
+            display: flex; align-items: center; justify-content: center; color: var(--text-2); transition: 0.3s;
+        }
+        .theme-btn:hover { background: var(--surface-2); }
+        .theme-btn i { width: 20px; height: 20px; }
+        [data-theme="light"] .theme-btn i.feather-moon { animation: moonAnim 2s infinite ease-in-out; }
+        [data-theme="dark"] .theme-btn i.feather-sun { animation: rotateSun 10s infinite linear; }
 
         /* =========================================================
            DASHBOARD
            ========================================================= */
         .balance-card {
-            display: flex; align-items: center; gap: 12px; padding: 16px;
-            background: linear-gradient(135deg, rgba(59,130,246,.1), rgba(6,182,212,.05));
-            border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px;
+            display: flex; align-items: center; gap: 14px; padding: 18px;
+            background: linear-gradient(135deg, rgba(59,130,246,.15), rgba(6,182,212,.05));
+            border: 1px solid rgba(59,130,246,0.2); border-radius: var(--radius); margin-bottom: 20px;
             box-shadow: var(--shadow);
         }
-        .bal-icon { width: 42px; height: 42px; border-radius: 12px; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; }
+        .bal-icon { width: 46px; height: 46px; border-radius: 14px; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; }
         .bal-info { flex: 1; }
-        .bal-label { font-size: 10px; font-weight: 700; color: var(--text-3); text-transform: uppercase; }
-        .bal-val { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 800; }
-        .btn-topup { padding: 10px 14px; border-radius: 10px; background: var(--blue); color: #fff; font-weight: 700; font-size: 12px; }
+        .bal-label { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
+        .bal-val { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 800; margin-top: 2px; }
+        .btn-topup { padding: 10px 16px; border-radius: 12px; background: var(--blue); color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
 
-        .search-box { position: relative; margin-bottom: 16px; }
-        .search-box input { width: 100%; padding: 14px 14px 14px 40px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
-        .search-box i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-3); width: 16px; }
-
-        .tabs { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 16px; scrollbar-width: none; }
+        .tabs { display: flex; gap: 10px; overflow-x: auto; margin-bottom: 20px; scrollbar-width: none; padding-bottom: 4px; }
         .tabs::-webkit-scrollbar { display: none; }
-        .tab { padding: 8px 16px; border-radius: 20px; background: var(--surface); border: 1px solid var(--border); color: var(--text-3); font-size: 12px; font-weight: 700; white-space: nowrap; }
-        .tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+        .tab { 
+            padding: 10px 20px; border-radius: 24px; background: var(--surface); border: 1px solid var(--border); 
+            color: var(--text-3); font-size: 13px; font-weight: 700; white-space: nowrap; display: flex; align-items: center; gap: 6px;
+            transition: 0.2s;
+        }
+        .tab i { width: 16px; height: 16px; }
+        .tab.active { background: var(--blue); color: #fff; border-color: var(--blue); box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
 
-        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
         .card {
             background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
-            overflow: hidden; box-shadow: var(--shadow);
+            overflow: hidden; box-shadow: var(--shadow); transition: transform 0.2s;
         }
+        .card:active { transform: scale(0.98); }
         .card-img { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: var(--surface-2); }
-        .card-body { padding: 10px; }
-        .card-title { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .card-meta { font-size: 11px; color: var(--text-3); margin-top: 4px; display: flex; align-items: center; gap: 4px; }
-        .card-price { font-size: 14px; font-weight: 800; color: var(--blue); margin-top: 6px; }
+        .card-body { padding: 12px; }
+        .card-title { font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .card-meta { font-size: 12px; color: var(--text-3); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+        .card-price { font-size: 15px; font-weight: 800; color: var(--blue); margin-top: 8px; }
 
         /* =========================================================
            REYTING (PODIUM)
            ========================================================= */
-        .podium-container { display: flex; justify-content: center; align-items: flex-end; gap: 8px; margin-bottom: 24px; padding: 20px 10px; background: linear-gradient(180deg, var(--surface) 0%, transparent 100%); border-radius: var(--radius); border: 1px solid var(--border); }
-        .podium-item { display: flex; flex-direction: column; align-items: center; position: relative; width: 80px; }
-        .podium-avatar { width: 56px; height: 56px; border-radius: 50%; border: 3px solid #fff; object-fit: cover; background: var(--surface); margin-bottom: 8px; }
-        .podium-1 .podium-avatar { width: 70px; height: 70px; border-color: #FFD700; }
-        .podium-1 .crown { position: absolute; top: -24px; font-size: 24px; }
-        .podium-name { font-size: 12px; font-weight: 700; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-        .podium-score { font-size: 11px; color: var(--blue); font-weight: 800; margin-top: 2px; }
-        .podium-block { width: 100%; background: var(--surface-2); border-radius: 10px 10px 0 0; margin-top: 10px; display: flex; justify-content: center; padding-top: 10px; font-weight: 800; color: var(--text-3); }
-        .podium-1 .podium-block { height: 70px; background: linear-gradient(180deg, rgba(255,215,0,.15), var(--surface)); color: #FFD700; }
-        .podium-2 .podium-block { height: 50px; background: linear-gradient(180deg, rgba(192,192,192,.15), var(--surface)); color: #C0C0C0; }
-        .podium-3 .podium-block { height: 40px; background: linear-gradient(180deg, rgba(205,127,50,.15), var(--surface)); color: #CD7F32; }
+        .podium-container { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin-bottom: 30px; padding: 30px 10px 0; background: linear-gradient(180deg, var(--surface) 0%, transparent 100%); border-radius: var(--radius); border: 1px solid var(--border); }
+        .podium-item { display: flex; flex-direction: column; align-items: center; position: relative; width: 90px; }
+        .podium-avatar { width: 60px; height: 60px; border-radius: 50%; border: 3px solid #fff; object-fit: cover; background: var(--surface); margin-bottom: 10px; box-shadow: var(--shadow); }
+        .podium-1 .podium-avatar { width: 80px; height: 80px; border-color: #FFD700; }
+        .podium-1 .crown { position: absolute; top: -30px; font-size: 30px; animation: float 2s infinite ease-in-out; }
+        .podium-name { font-size: 13px; font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+        .podium-score { font-size: 12px; color: var(--blue); font-weight: 800; margin-top: 4px; }
+        .podium-block { width: 100%; background: var(--surface-2); border-radius: 12px 12px 0 0; margin-top: 12px; display: flex; justify-content: center; padding-top: 12px; font-weight: 800; font-size: 18px; color: var(--text-3); }
+        .podium-1 .podium-block { height: 80px; background: linear-gradient(180deg, rgba(255,215,0,.15), var(--surface)); color: #FFD700; }
+        .podium-2 .podium-block { height: 60px; background: linear-gradient(180deg, rgba(192,192,192,.15), var(--surface)); color: #C0C0C0; }
+        .podium-3 .podium-block { height: 50px; background: linear-gradient(180deg, rgba(205,127,50,.15), var(--surface)); color: #CD7F32; }
 
         /* =========================================================
            PROFIL
            ========================================================= */
         .premium-card {
-            background: linear-gradient(135deg, var(--blue), var(--blue-2)); border-radius: var(--radius); padding: 20px;
-            color: #fff; position: relative; overflow: hidden; margin-bottom: 16px; box-shadow: var(--shadow);
+            background: linear-gradient(135deg, var(--blue), var(--blue-2)); border-radius: var(--radius); padding: 24px;
+            color: #fff; position: relative; overflow: hidden; margin-bottom: 20px; box-shadow: var(--shadow-lg);
         }
-        .premium-card::before { content: 'PREMIUM'; position: absolute; top: 15px; right: 15px; font-size: 10px; font-weight: 800; letter-spacing: 1px; opacity: 0.5; }
-        .prof-name { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 800; margin-top: 20px; }
-        .prof-id { font-size: 13px; opacity: 0.8; margin-top: 4px; }
-        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; }
-        .stat-box { background: rgba(255,255,255,.15); border-radius: 12px; padding: 10px; text-align: center; backdrop-filter: blur(10px); }
-        .stat-val { font-size: 16px; font-weight: 800; }
-        .stat-lbl { font-size: 10px; opacity: 0.8; margin-top: 2px; }
+        .premium-card::before { content: 'PREMIUM'; position: absolute; top: 20px; right: 20px; font-size: 11px; font-weight: 800; letter-spacing: 2px; opacity: 0.4; }
+        .prof-name { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 800; margin-top: 24px; }
+        .prof-id { font-size: 14px; opacity: 0.8; margin-top: 6px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px; }
+        .stat-box { background: rgba(255,255,255,.15); border-radius: 14px; padding: 12px; text-align: center; backdrop-filter: blur(10px); }
+        .stat-val { font-size: 18px; font-weight: 800; }
+        .stat-lbl { font-size: 11px; opacity: 0.8; margin-top: 4px; }
 
-        .menu-list { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; }
-        .menu-item { display: flex; align-items: center; padding: 16px; border-bottom: 1px solid var(--border); }
+        .menu-list { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; margin-bottom: 20px; }
+        .menu-item { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); transition: background 0.2s; }
+        .menu-item:active { background: var(--surface-2); }
         .menu-item:last-child { border-bottom: none; }
-        .menu-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2); color: var(--blue); display: flex; align-items: center; justify-content: center; margin-right: 12px; }
-        .menu-text { flex: 1; font-weight: 700; font-size: 14px; }
+        .menu-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); color: var(--blue); display: flex; align-items: center; justify-content: center; margin-right: 16px; }
+        .menu-text { flex: 1; font-weight: 700; font-size: 15px; }
+        .menu-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 
         /* =========================================================
            INPUT VA TUGMALAR
            ========================================================= */
-        .input-group { margin-bottom: 14px; }
-        .label { display: block; font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 6px; }
-        .input { width: 100%; padding: 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); font-size: 14px; font-weight: 500; }
-        .input:focus { border-color: var(--blue); }
-        .btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px; }
-        .btn-primary { background: var(--blue); color: #fff; }
+        .input-group { margin-bottom: 16px; }
+        .label { display: block; font-size: 13px; font-weight: 700; color: var(--text-2); margin-bottom: 8px; }
+        .input { width: 100%; padding: 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); font-size: 15px; font-weight: 600; color: var(--text); transition: 0.2s; }
+        .input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+        .btn { width: 100%; padding: 16px; border-radius: 14px; font-weight: 800; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 4px 16px rgba(59,130,246,0.3); }
         .btn-outline { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
         .btn-danger { background: var(--red); color: #fff; }
 
@@ -170,99 +184,301 @@
         .nav {
             position: absolute; bottom: 0; left: 0; right: 0; width: 100%;
             background: var(--bg-2); backdrop-filter: blur(20px); border-top: 1px solid var(--border);
-            display: flex; justify-content: space-around; align-items: center; padding: 8px 0;
-            padding-bottom: calc(8px + env(safe-area-inset-bottom, 0)); z-index: 100;
+            display: flex; justify-content: space-around; align-items: center; padding: 10px 0;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0)); z-index: 100;
         }
-        .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-3); font-size: 9px; font-weight: 700; width: 60px; }
+        .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-3); font-size: 10px; font-weight: 700; width: 64px; transition: 0.2s; }
         .nav-item.active { color: var(--blue); }
-        .nav-icon { width: 22px; height: 22px; }
+        .nav-icon { width: 24px; height: 24px; }
         .nav-icon svg { width: 100%; height: 100%; }
         .nav-fab {
-            width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), var(--cyan));
+            width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), var(--cyan));
             display: flex; align-items: center; justify-content: center; color: #fff;
-            transform: translateY(-16px); box-shadow: 0 8px 20px rgba(59,130,246,.4); border: 4px solid var(--bg);
+            transform: translateY(-20px); box-shadow: 0 8px 24px rgba(59,130,246,0.4); border: 5px solid var(--bg);
+            transition: 0.2s;
         }
+        .nav-fab:active { transform: translateY(-20px) scale(0.9); }
 
         /* =========================================================
-           MODALLAR
+           MODALLAR VA PREMIUM SAHIFALAR
            ========================================================= */
-        .modal { position: absolute; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(5px); z-index: 1000; display: none; align-items: flex-end; justify-content: center; }
-        .modal.active { display: flex; }
-        .modal-content { width: 100%; background: var(--bg); border-radius: 24px 24px 0 0; padding: 20px; animation: fadeIn 0.3s; max-height: 90%; overflow-y: auto; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 800; }
+        .overlay { position: absolute; inset: 0; background: rgba(0,0,0,.8); backdrop-filter: blur(8px); z-index: 900; display: none; align-items: flex-end; justify-content: center; }
+        .overlay.active { display: flex; }
+        .modal-content { width: 100%; background: var(--bg); border-radius: 28px 28px 0 0; padding: 24px; animation: slideUp 0.3s ease; max-height: 90%; overflow-y: auto; box-shadow: 0 -10px 40px rgba(0,0,0,0.5); }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 800; }
 
-        #toast { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: 20px; font-size: 13px; font-weight: 700; z-index: 2000; opacity: 0; transition: 0.3s; pointer-events: none; }
+        /* TOPUP PREMIUM SAHIFA */
+        .topup-amount-box { text-align: center; margin: 20px 0; position: relative; }
+        .topup-amount-box input { width: 100%; text-align: center; font-size: 40px; font-weight: 800; font-family: 'Space Grotesk'; background: transparent; border: none; color: var(--text); }
+        .topup-amount-box .currency { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); font-size: 16px; font-weight: 700; color: var(--text-3); }
+        .quick-amounts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 24px; }
+        .qa-btn { padding: 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); font-weight: 700; font-size: 14px; transition: 0.2s; }
+        .qa-btn.active { background: rgba(59,130,246,0.1); border-color: var(--blue); color: var(--blue); }
+        .timer-badge { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 12px; background: rgba(16,185,129,0.1); color: var(--green); font-weight: 700; font-size: 14px; margin-bottom: 20px; }
+        
+        /* CREATE AD WIZARD */
+        .progress-bar { width: 100%; height: 6px; background: var(--surface-2); border-radius: 3px; margin-bottom: 24px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--blue); border-radius: 3px; transition: width 0.3s ease; width: 0%; }
+        .wizard-step { display: none; animation: fadeIn 0.3s ease; }
+        .wizard-step.active { display: block; }
+        .tariff-card { padding: 20px; border-radius: 16px; background: var(--surface); border: 2px solid var(--border); margin-bottom: 12px; position: relative; transition: 0.2s; cursor: pointer; }
+        .tariff-card.selected { border-color: var(--blue); background: rgba(59,130,246,0.05); }
+        .tariff-price { font-size: 24px; font-weight: 800; color: var(--blue); font-family: 'Space Grotesk'; }
+        .tariff-features { list-style: none; margin-top: 12px; font-size: 13px; color: var(--text-2); }
+        .tariff-features li { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+        .tariff-features i { color: var(--green); width: 14px; }
+        
+        .cat-form-box { background: var(--surface); border-radius: 16px; padding: 20px; border: 1px solid var(--border); margin-bottom: 16px; }
+        .file-upload { border: 2px dashed var(--border); border-radius: 16px; padding: 30px; text-align: center; color: var(--text-3); cursor: pointer; transition: 0.2s; }
+        .file-upload:active { background: var(--surface-2); }
+
+        #toast { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 12px 24px; border-radius: 30px; font-size: 14px; font-weight: 800; z-index: 2000; opacity: 0; transition: 0.3s; pointer-events: none; box-shadow: var(--shadow-lg); }
         #toast.show { opacity: 1; }
+        
+        /* Spinner */
+        .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: var(--blue); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
     </style>
 </head>
 <body>
 
     <div id="app-frame">
-
         <!-- HEADER -->
         <header class="header">
             <div class="user-info">
                 <div class="avatar" id="h-avatar">U</div>
                 <div class="user-text">
-                    <span class="greeting">Salom,</span>
+                    <span class="greeting">SALOM,</span>
                     <span class="name" id="h-name">Yuklanmoqda...</span>
                 </div>
             </div>
             <button class="theme-btn" onclick="UI.toggleTheme()">
-                <i data-feather="moon" style="width:18px;"></i>
+                <i data-feather="moon"></i>
             </button>
         </header>
 
         <!-- PAGE: DASHBOARD -->
         <div class="page active" id="p-dashboard">
             <div class="balance-card">
-                <div class="bal-icon"><i data-feather="credit-card" style="width:20px;"></i></div>
+                <div class="bal-icon"><i data-feather="credit-card"></i></div>
                 <div class="bal-info">
                     <div class="bal-label">Balans</div>
                     <div class="bal-val"><span id="ui-balance">0</span> so'm</div>
                 </div>
-                <button class="btn-topup" onclick="UI.openModal('m-topup')">+ To'ldirish</button>
-            </div>
-
-            <div class="search-box">
-                <i data-feather="search"></i>
-                <input type="text" id="search" placeholder="Mushuk, zot yoki shahar..." onkeyup="Dashboard.filter()">
+                <button class="btn-topup" onclick="UI.showPage('p-topup')">+ To'ldirish</button>
             </div>
 
             <div class="tabs">
-                <button class="tab active" onclick="Dashboard.setFilter('all', this)">Hammasi</button>
-                <button class="tab" onclick="Dashboard.setFilter('new', this)">Yangi</button>
-                <button class="tab" onclick="Dashboard.setFilter('cheap', this)">Arzon</button>
+                <button class="tab active" onclick="Dashboard.setFilter('all', this)"><i data-feather="grid"></i> Hammasi</button>
+                <button class="tab" onclick="Dashboard.setFilter('new', this)"><i data-feather="clock"></i> Yangi</button>
+                <button class="tab" onclick="Dashboard.setFilter('cheap', this)"><i data-feather="trending-down"></i> Arzon</button>
             </div>
 
             <div class="grid-2" id="ads-grid">
-                <div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-3);">Yuklanmoqda...</div>
+                <div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-3);">Yuklanmoqda...</div>
             </div>
         </div>
 
         <!-- PAGE: RATING -->
         <div class="page" id="p-rating">
-            <h2 style="font-family: 'Space Grotesk'; font-size: 20px; font-weight: 800; margin-bottom: 16px;">Konkurs Reytingi</h2>
+            <h2 style="font-family: 'Space Grotesk'; font-size: 24px; font-weight: 800; margin-bottom: 20px;">Konkurs Reytingi</h2>
             <div class="podium-container" id="rating-podium"></div>
             <div class="grid-2" id="rating-list" style="grid-template-columns: 1fr;"></div>
         </div>
 
-        <!-- PAGE: CREATE AD -->
+        <!-- PAGE: TOPUP (Alohida sahifa) -->
+        <div class="page" id="p-topup">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+                <button onclick="UI.showPage('p-dashboard')" style="width: 40px; height: 40px; border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: center;"><i data-feather="arrow-left"></i></button>
+                <h2 style="font-family: 'Space Grotesk'; font-size: 20px; font-weight: 800;">Hisobni to'ldirish</h2>
+            </div>
+            
+            <div class="input-group">
+                <div class="topup-amount-box">
+                    <input type="number" id="topup-amount" placeholder="0" oninput="Topup.updateAmounts(this.value)">
+                    <span class="currency">so'm</span>
+                </div>
+            </div>
+            
+            <div class="quick-amounts">
+                <button class="qa-btn" onclick="Topup.setAmount(5000, this)">5 000</button>
+                <button class="qa-btn" onclick="Topup.setAmount(10000, this)">10 000</button>
+                <button class="qa-btn" onclick="Topup.setAmount(25000, this)">25 000</button>
+                <button class="qa-btn" onclick="Topup.setAmount(50000, this)">50 000</button>
+                <button class="qa-btn" onclick="Topup.setAmount(100000, this)">100 000</button>
+                <button class="qa-btn" onclick="Topup.setAmount(500000, this)">500 000</button>
+            </div>
+
+            <button class="btn btn-primary" onclick="Topup.start()">Davom etish</button>
+
+            <!-- To'lov ma'lumotlari (yashirin) -->
+            <div id="topup-info" class="hidden" style="margin-top: 24px;">
+                <div class="timer-badge"><i data-feather="clock" style="width:16px;"></i> To'lov <span id="t-timer">10:00</span> ichida amalga oshirilishi kerak</div>
+                
+                <div class="card" style="padding: 16px; margin-bottom: 20px;">
+                    <div style="font-size: 12px; color: var(--text-3); margin-bottom: 8px;">TO'LOV UCHUN KARTA</div>
+                    <div style="font-size: 22px; font-weight: 800; font-family: 'Space Grotesk'; letter-spacing: 2px;" id="t-card">---- ---- ---- ----</div>
+                    <div style="font-size: 14px; color: var(--text-2); margin-top: 8px;" id="t-holder">Karta egasi</div>
+                    <div style="font-size: 14px; margin-top: 12px;">Summa: <b id="t-sum" style="color: var(--blue);">0 so'm</b></div>
+                </div>
+                
+                <button class="btn btn-outline" onclick="Topup.copyCard()" style="margin-bottom: 12px;">
+                    <i data-feather="copy" style="width:16px;"></i> Karta raqamini nusxalash
+                </button>
+
+                <label class="file-upload" style="display: block; margin-bottom: 12px;">
+                    <i data-feather="image" style="width:32px; height:32px; margin-bottom: 8px; color: var(--blue);"></i>
+                    <div style="font-weight: 700; color: var(--text);">To'lov chekini yuklang</div>
+                    <div style="font-size: 12px;">Karta raqami va summa ko'rinishi shart</div>
+                    <input type="file" accept="image/*" style="display: none;" onchange="Topup.upload(this)">
+                </label>
+            </div>
+        </div>
+
+        <!-- PAGE: CREATE AD (Wizard) -->
         <div class="page" id="p-create">
-            <h2 style="font-family: 'Space Grotesk'; font-size: 20px; font-weight: 800; margin-bottom: 16px;">Reklama berish</h2>
-            <div class="input-group"><label class="label">Zoti</label><input type="text" class="input" id="ad-breed" placeholder="British Shorthair"></div>
-            <div class="input-group"><label class="label">Narxi (so'm)</label><input type="number" class="input" id="ad-price" placeholder="1500000"></div>
-            <div class="input-group"><label class="label">Manzil</label><input type="text" class="input" id="ad-address" placeholder="Toshkent"></div>
-            <div class="input-group"><label class="label">Telefon</label><input type="text" class="input" id="ad-phone" placeholder="+998901234567"></div>
-            <div class="input-group"><label class="label">Rasm (Maks 3 ta)</label><input type="file" class="input" id="ad-photos" multiple accept="image/*"></div>
-            <button class="btn btn-primary" id="btn-submit-ad" onclick="CreateAd.submit()">Tasdiqlash va To'lov</button>
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                <button onclick="UI.showPage('p-dashboard')" style="width: 40px; height: 40px; border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: center;"><i data-feather="arrow-left"></i></button>
+                <h2 style="font-family: 'Space Grotesk'; font-size: 20px; font-weight: 800;">Reklama berish</h2>
+            </div>
+            
+            <div class="progress-bar"><div class="progress-fill" id="w-progress"></div></div>
+
+            <!-- Step 1: Cat Count -->
+            <div class="wizard-step active" id="w-step-1">
+                <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Nechta mushuk sotmoqchisiz?</h3>
+                <div class="grid-2" style="grid-template-columns: repeat(3, 1fr);">
+                    <button class="btn btn-outline" onclick="CreateAd.setCount(1)">1 ta</button>
+                    <button class="btn btn-outline" onclick="CreateAd.setCount(2)">2 ta</button>
+                    <button class="btn btn-outline" onclick="CreateAd.setCount(3)">3 ta</button>
+                    <button class="btn btn-outline" onclick="CreateAd.setCount(4)">4 ta</button>
+                    <button class="btn btn-outline" onclick="CreateAd.setCount(5)">5 ta</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Tariff -->
+            <div class="wizard-step" id="w-step-2">
+                <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Tarifni tanlang</h3>
+                <div id="tariff-list"></div>
+                <button class="btn btn-primary" onclick="CreateAd.checkBalance()" style="margin-top: 16px;">Davom etish</button>
+            </div>
+
+            <!-- Step 3: Media -->
+            <div class="wizard-step" id="w-step-3">
+                <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Rasm yuklang (1-3 ta)</h3>
+                <label class="file-upload" style="display: block; margin-bottom: 16px;">
+                    <i data-feather="camera" style="width:32px; height:32px; margin-bottom: 8px; color: var(--blue);"></i>
+                    <div style="font-weight: 700; color: var(--text);">Rasm tanlang</div>
+                    <input type="file" accept="image/*" multiple style="display: none;" onchange="CreateAd.handleFiles(this)">
+                </label>
+                <div id="preview-box" class="grid-2" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 16px;"></div>
+                <button class="btn btn-primary" onclick="CreateAd.nextStep(4)">Davom etish</button>
+            </div>
+
+            <!-- Step 4: Cat Details (Dynamic) -->
+            <div class="wizard-step" id="w-step-4">
+                <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;" id="cat-detail-title">1-mushuk ma'lumotlari</h3>
+                <div class="cat-form-box">
+                    <div class="input-group">
+                        <label class="label">Zoti</label>
+                        <select class="input" id="c-breed">
+                            <option value="British Shorthair">British Shorthair</option>
+                            <option value="Scottish Fold">Scottish Fold</option>
+                            <option value="Bengal">Bengal</option>
+                            <option value="Maine Coon">Maine Coon</option>
+                            <option value="Ragdoll">Ragdoll</option>
+                            <option value="Uy mushuki">Uy mushuki</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label class="label">Yoshi</label>
+                        <select class="input" id="c-age">
+                            <option value="1 oylik">1 oylik</option>
+                            <option value="2 oylik">2 oylik</option>
+                            <option value="3 oylik">3 oylik</option>
+                            <option value="6 oylik">6 oylik</option>
+                            <option value="1 yosh">1 yosh</option>
+                            <option value="2 yosh">2 yosh</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label class="label">Jinsi</label>
+                        <select class="input" id="c-gender">
+                            <option value="Erkak">Erkak</option>
+                            <option value="Urg'ochi">Urg'ochi</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label class="label">Sog'lig'i</label>
+                        <select class="input" id="c-health">
+                            <option value="Sog'lom">Sog'lom</option>
+                            <option value="Kasal">Kasal</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="CreateAd.saveCat()">Keyingisi</button>
+            </div>
+
+            <!-- Step 5: Location & Contact -->
+            <div class="wizard-step" id="w-step-5">
+                <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Manzil va Aloqa</h3>
+                <div class="input-group">
+                    <label class="label">Viloyat/Shahar</label>
+                    <select class="input" id="ad-address">
+                        <option value="Toshkent">Toshkent</option>
+                        <option value="Samarqand">Samarqand</option>
+                        <option value="Buxoro">Buxoro</option>
+                        <option value="Andijon">Andijon</option>
+                        <option value="Farg'ona">Farg'ona</option>
+                        <option value="Namangan">Namangan</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label class="label">Telefon raqam</label>
+                    <input type="text" class="input" id="ad-phone" placeholder="+998 90 123 45 67" value="+998">
+                </div>
+                <div class="input-group">
+                    <label class="label">Telegram Username</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" class="input" id="ad-username" placeholder="@username">
+                        <button class="btn btn-outline" style="width: auto; padding: 0 16px;" onclick="CreateAd.fillUsername()">O'zimniki</button>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="CreateAd.nextStep(6)">Davom etish</button>
+            </div>
+
+            <!-- Step 6: Price & Currency -->
+            <div class="wizard-step" id="w-step-6">
+                <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Narxni belgilang</h3>
+                <div class="input-group">
+                    <label class="label">Valyuta</label>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-outline" id="btn-uzs" onclick="CreateAd.setCurrency('so\\'m', this)">So'm</button>
+                        <button class="btn btn-outline" id="btn-usd" onclick="CreateAd.setCurrency('$', this)">Dollar ($)</button>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label class="label">Narxi</label>
+                    <input type="number" class="input" id="ad-price" placeholder="1500000">
+                </div>
+                <button class="btn btn-primary" onclick="CreateAd.preview()">Tekshirish</button>
+            </div>
+
+            <!-- Step 7: Preview -->
+            <div class="wizard-step" id="w-step-7">
+                <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Tekshirib oling</h3>
+                <div class="card" style="padding: 16px; margin-bottom: 16px;" id="preview-data"></div>
+                <div id="balance-warning" class="hidden" style="color: var(--red); font-weight: 700; margin-bottom: 16px; text-align: center;"></div>
+                <button class="btn btn-primary" onclick="CreateAd.submit()">Tasdiqlash va To'lov</button>
+                <button class="btn btn-outline" onclick="CreateAd.nextStep(6)" style="margin-top: 10px;">Orqaga</button>
+            </div>
         </div>
 
         <!-- PAGE: MY ADS -->
         <div class="page" id="p-myads">
-            <h2 style="font-family: 'Space Grotesk'; font-size: 20px; font-weight: 800; margin-bottom: 16px;">Mening e'lonlarim</h2>
-            <div id="myads-list" class="grid-2" style="grid-template-columns: 1fr;">
+            <h2 style="font-family: 'Space Grotesk'; font-size: 24px; font-weight: 800; margin-bottom: 20px;">Mening e'lonlarim</h2>
+            <div id="myads-list" style="display: flex; flex-direction: column; gap: 12px;">
                 <p style="color: var(--text-3); text-align: center;">Yuklanmoqda...</p>
             </div>
         </div>
@@ -280,39 +496,102 @@
             </div>
 
             <div class="menu-list">
-                <div class="menu-item" onclick="UI.openModal('m-topup')">
-                    <div class="menu-icon"><i data-feather="credit-card" style="width:18px;"></i></div>
+                <div class="menu-item" onclick="UI.showPage('p-topup')">
+                    <div class="menu-icon"><i data-feather="credit-card"></i></div>
                     <div class="menu-text">Hisobni to'ldirish</div>
-                    <i data-feather="chevron-right" style="color: var(--text-3); width:18px;"></i>
+                    <i data-feather="chevron-right" style="color: var(--text-3);"></i>
                 </div>
                 <div class="menu-item" onclick="UI.showPage('p-myads')">
-                    <div class="menu-icon"><i data-feather="list" style="width:18px;"></i></div>
+                    <div class="menu-icon"><i data-feather="list"></i></div>
                     <div class="menu-text">Mening e'lonlarim</div>
-                    <i data-feather="chevron-right" style="color: var(--text-3); width:18px;"></i>
+                    <i data-feather="chevron-right" style="color: var(--text-3);"></i>
                 </div>
                 <div class="menu-item" id="btn-admin" style="display: none;" onclick="UI.showPage('p-admin')">
-                    <div class="menu-icon" style="color: var(--purple);"><i data-feather="shield" style="width:18px;"></i></div>
+                    <div class="menu-icon" style="color: var(--purple);"><i data-feather="shield"></i></div>
                     <div class="menu-text">Admin Panel</div>
-                    <i data-feather="chevron-right" style="color: var(--text-3); width:18px;"></i>
+                    <i data-feather="chevron-right" style="color: var(--text-3);"></i>
+                </div>
+                <div class="menu-item">
+                    <div class="menu-icon"><i data-feather="help-circle"></i></div>
+                    <div class="menu-text">Yordam</div>
+                    <div style="font-size: 13px; color: var(--text-3);">@It_project_2026</div>
                 </div>
             </div>
         </div>
 
-        <!-- PAGE: ADMIN -->
+        <!-- PAGE: ADMIN PANEL (Premium) -->
         <div class="page" id="p-admin">
-            <h2 style="font-family: 'Space Grotesk'; font-size: 20px; font-weight: 800; margin-bottom: 16px;">Admin Panel</h2>
-            <div class="grid-2" style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+                <button onclick="UI.showPage('p-profile')" style="width: 40px; height: 40px; border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: center;"><i data-feather="arrow-left"></i></button>
+                <h2 style="font-family: 'Space Grotesk'; font-size: 20px; font-weight: 800;">Admin Panel</h2>
+            </div>
+
+            <div class="grid-2" style="margin-bottom: 20px;">
                 <div class="card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 20px; font-weight: 800; color: var(--blue);" id="stat-today">0</div>
-                    <div style="font-size: 11px; color: var(--text-3);">Bugun (so'm)</div>
+                    <div style="font-size: 22px; font-weight: 800; color: var(--blue);" id="stat-total-ads">0</div>
+                    <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Jami e'lonlar</div>
                 </div>
                 <div class="card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 20px; font-weight: 800; color: var(--green);" id="stat-month">0</div>
-                    <div style="font-size: 11px; color: var(--text-3);">Oylik (so'm)</div>
+                    <div style="font-size: 22px; font-weight: 800; color: var(--green);" id="stat-total-users">0</div>
+                    <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Foydalanuvchi</div>
+                </div>
+                <div class="card" style="padding: 16px; text-align: center;">
+                    <div style="font-size: 22px; font-weight: 800; color: var(--amber);" id="stat-pending">0</div>
+                    <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Kutilmoqda</div>
+                </div>
+                <div class="card" style="padding: 16px; text-align: center;">
+                    <div style="font-size: 22px; font-weight: 800; color: var(--purple);" id="stat-cards">0</div>
+                    <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Kartalar</div>
                 </div>
             </div>
-            <button class="btn btn-outline" style="margin-bottom: 10px;" onclick="UI.openModal('m-card')">Karta qo'shish</button>
-            <button class="btn btn-outline" onclick="UI.openModal('m-userbot')">Userbot ulash</button>
+
+            <div class="tabs" style="margin-bottom: 16px;">
+                <button class="tab active" onclick="Admin.setTab('stats', this)"><i data-feather="bar-chart"></i> Statistika</button>
+                <button class="tab" onclick="Admin.setTab('ads', this)"><i data-feather="layers"></i> E'lonlar</button>
+                <button class="tab" onclick="Admin.setTab('cards', this)"><i data-feather="credit-card"></i> Kartalar</button>
+            </div>
+
+            <!-- Admin: Stats -->
+            <div id="admin-tab-stats">
+                <div class="grid-2">
+                    <div class="card" style="padding: 16px;">
+                        <div style="font-size: 12px; color: var(--text-3);">BUGUN</div>
+                        <div style="font-size: 20px; font-weight: 800; color: var(--blue);" id="inc-today">0 so'm</div>
+                    </div>
+                    <div class="card" style="padding: 16px;">
+                        <div style="font-size: 12px; color: var(--text-3);">KECHA</div>
+                        <div style="font-size: 20px; font-weight: 800; color: var(--green);" id="inc-yesterday">0 so'm</div>
+                    </div>
+                    <div class="card" style="padding: 16px;">
+                        <div style="font-size: 12px; color: var(--text-3);">7 KUN</div>
+                        <div style="font-size: 20px; font-weight: 800; color: var(--amber);" id="inc-week">0 so'm</div>
+                    </div>
+                    <div class="card" style="padding: 16px;">
+                        <div style="font-size: 12px; color: var(--text-3);">30 KUN</div>
+                        <div style="font-size: 20px; font-weight: 800; color: var(--purple);" id="inc-month">0 so'm</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin: Ads -->
+            <div id="admin-tab-ads" class="hidden">
+                <div id="admin-ads-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+            </div>
+
+            <!-- Admin: Cards -->
+            <div id="admin-tab-cards" class="hidden">
+                <div class="card" style="padding: 16px; margin-bottom: 16px;">
+                    <div class="input-group">
+                        <label class="label">Karta raqami</label>
+                        <input type="text" class="input" id="adm-card-num" placeholder="8600 0000 0000 0000">
+                    </div>
+                    <div class="input-group">
+                        <label class="label">Karta egasi</label>
+                        <input type="text" class="input" id="adm-card-holder" placeholder="ISM FAMILIYA">
+                    </div>
+                    <button class="btn btn-primary" onclick="Admin.saveCard()">Saqlash</button>
+                </div>
+            </div>
         </div>
 
         <!-- NAV -->
@@ -324,7 +603,7 @@
                 <div class="nav-icon"><i data-feather="bar-chart-2"></i></div><span>Reyting</span>
             </button>
             <div class="nav-fab" onclick="UI.showPage('p-create')">
-                <i data-feather="plus"></i>
+                <i data-feather="plus" style="width: 28px; height: 28px;"></i>
             </div>
             <button class="nav-item" onclick="UI.showPage('p-myads', this)">
                 <div class="nav-icon"><i data-feather="layers"></i></div><span>E'lonlarim</span>
@@ -335,48 +614,6 @@
         </nav>
     </div>
 
-    <!-- MODALS -->
-    <div class="modal" id="m-topup">
-        <div class="modal-content">
-            <div class="modal-header"><div class="modal-title">Hisob to'ldirish</div><button onclick="UI.closeModal('m-topup')"><i data-feather="x"></i></button></div>
-            <div class="input-group"><label class="label">Summa (so'm)</label><input type="number" class="input" id="topup-amount" placeholder="25000"></div>
-            <button class="btn btn-primary" onclick="Topup.start()">Davom etish</button>
-
-            <div id="topup-info" class="hidden" style="margin-top: 16px; padding: 12px; background: var(--surface-2); border-radius: 10px;">
-                <p style="font-size: 13px; margin-bottom: 6px;">Karta: <b id="t-card">...</b></p>
-                <p style="font-size: 13px;">Vaqt: <b id="t-timer" style="color: var(--red);">10:00</b></p>
-                <label class="btn btn-outline" style="margin-top: 12px; cursor: pointer;">
-                    <i data-feather="upload" style="width:16px;"></i> Chekni yuklash
-                    <input type="file" accept="image/*" style="display: none;" onchange="Topup.upload(this)">
-                </label>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal" id="m-card">
-        <div class="modal-content">
-            <div class="modal-header"><div class="modal-title">Karta qo'shish</div><button onclick="UI.closeModal('m-card')"><i data-feather="x"></i></button></div>
-            <input type="text" class="input" id="adm-card" placeholder="8600 0000 0000 0000" style="margin-bottom: 10px;">
-            <input type="text" class="input" id="adm-holder" placeholder="Karta egasi" style="margin-bottom: 16px;">
-            <button class="btn btn-primary" onclick="Admin.saveCard()">Saqlash</button>
-        </div>
-    </div>
-
-    <div class="modal" id="m-userbot">
-        <div class="modal-content">
-            <div class="modal-header"><div class="modal-title">Userbot ulash</div><button onclick="UI.closeModal('m-userbot')"><i data-feather="x"></i></button></div>
-            <div id="ub-step-1">
-                <input type="text" class="input" id="ub-phone" placeholder="+998901234567" style="margin-bottom: 16px;">
-                <button class="btn btn-primary" onclick="Admin.ubSend()">Kod yuborish</button>
-            </div>
-            <div id="ub-step-2" class="hidden">
-                <input type="text" class="input" id="ub-code" placeholder="Kod" style="margin-bottom: 10px;">
-                <input type="password" class="input" id="ub-pass" placeholder="Parol (2FA bo'lsa)" style="margin-bottom: 16px;">
-                <button class="btn btn-primary" onclick="Admin.ubVerify()">Tasdiqlash</button>
-            </div>
-        </div>
-    </div>
-
     <div id="toast"></div>
 
     <script>
@@ -384,18 +621,35 @@
         const API_BASE = 'https://uzbekcats-production.up.railway.app/api';
         const tg = window.Telegram?.WebApp;
         const TOKEN = tg?.initData || '';
-        let STATE = { user: null, payment_id: null };
+        
+        let STATE = { 
+            user: null, 
+            payment_id: null,
+            ads: [],
+            currentFilter: 'all',
+            adState: {
+                step: 1, cat_count: 1, tariff: '', photos: [], cats: [], currentCatIndex: 0,
+                address: '', phone: '', username: '', price: '', currency: "so'm"
+            }
+        };
 
         const $ = id => document.getElementById(id);
         const num = n => Number(n || 0).toLocaleString('uz-UZ');
 
+        // Tarif narxlari (backend config.py dan olingan)
+        const TARIFFS = {
+            'web_only': { name: 'Web App', prices: {1:10000, 2:18000, 3:25000, 4:31000, 5:38000} },
+            'channel_only': { name: 'Kanal', prices: {1:25000, 2:45000, 3:65000, 4:85000, 5:105000} },
+            'web_and_channel': { name: 'Web + Kanal', prices: {1:32000, 2:50000, 3:75000, 4:95000, 5:110000} }
+        };
+
         const UI = {
             init() {
                 if (tg) { tg.ready(); tg.expand(); }
-                if (localStorage.getItem('theme') === 'dark') {
-                    document.body.setAttribute('data-theme', 'dark');
+                if (localStorage.getItem('theme') === 'light') {
+                    document.documentElement.setAttribute('data-theme', 'light');
                 } else {
-                    document.body.setAttribute('data-theme', 'light');
+                    document.documentElement.setAttribute('data-theme', 'dark');
                 }
                 feather.replace();
                 this.loadData();
@@ -417,14 +671,11 @@
                 if(id === 'p-myads') MyAds.load();
                 if(id === 'p-rating') Rating.load();
             },
-            openModal(id) { $(id).classList.add('active'); },
-            closeModal(id) { $(id).classList.remove('active'); },
             toggleTheme() {
-                const isDark = document.body.getAttribute('data-theme') === 'dark';
-                document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
+                const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
                 localStorage.setItem('theme', isDark ? 'light' : 'dark');
             },
-
             async loadData() {
                 try {
                     const res = await fetch(`${API_BASE}/user/me`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
@@ -432,7 +683,12 @@
                     STATE.user = await res.json();
 
                     $('h-name').innerText = STATE.user.full_name || "Foydalanuvchi";
-                    $('h-avatar').innerText = (STATE.user.full_name || "U")[0];
+                    
+                    const avatarHtml = STATE.user.photo_url 
+                        ? `<img src="${STATE.user.photo_url}">` 
+                        : (STATE.user.full_name || "U")[0];
+                    $('h-avatar').innerHTML = avatarHtml;
+
                     $('ui-balance').innerText = num(STATE.user.balance);
 
                     $('prof-name').innerText = STATE.user.full_name || "Foydalanuvchi";
@@ -452,43 +708,45 @@
         };
 
         const Dashboard = {
-            ads: [],
             async load() {
                 const grid = $('ads-grid');
                 try {
                     const res = await fetch(`${API_BASE}/ads`);
-                    this.ads = await res.json();
-                    this.render(this.ads);
+                    STATE.ads = await res.json();
+                    this.render(STATE.currentFilter);
                 } catch(e) {
-                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-3);">E'lonlarni yuklab bo'lmadi</div>`;
+                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-3);">E'lonlarni yuklab bo'lmadi</div>`;
                 }
             },
             setFilter(type, btn) {
                 document.querySelectorAll('.tabs .tab').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-                let filtered = [...this.ads];
-                if(type === 'cheap') filtered.sort((a,b) => a.price - b.price);
-                if(type === 'new') filtered.sort((a,b) => b.id - a.id);
-                this.render(filtered);
+                STATE.currentFilter = type;
+                this.render(type);
             },
-            filter() {
-                const q = $('search').value.toLowerCase();
-                const filtered = this.ads.filter(a => a.breed.toLowerCase().includes(q) || a.address.toLowerCase().includes(q));
-                this.render(filtered);
-            },
-            render(data) {
+            render(type) {
                 const grid = $('ads-grid');
+                let data = [...STATE.ads];
+                
+                if (type === 'new') {
+                    const dayAgo = new Date().getTime() - (24 * 60 * 60 * 1000);
+                    data = data.filter(a => new Date(a.created_at).getTime() > dayAgo);
+                } else if (type === 'cheap') {
+                    data.sort((a, b) => Number(a.price) - Number(b.price));
+                }
+
                 if(data.length === 0) {
-                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-3);">E'lonlar yo'q</div>`;
+                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-3);">E'lonlar yo'q</div>`;
                     return;
                 }
+                
                 grid.innerHTML = data.map(ad => `
-                    <div class="card" onclick="UI.toast('Batafsil ma\\'lumot tez orada')">
-                        <img src="${ad.photos[0] || 'https://via.placeholder.com/150'}" class="card-img">
+                    <div class="card" onclick="UI.toast('Batafsil: ${ad.breed}')">
+                        <img src="${ad.photos[0] ? API_BASE.replace('/api','') + ad.photos[0] : 'https://via.placeholder.com/150'}" class="card-img">
                         <div class="card-body">
                             <div class="card-title">${ad.breed}</div>
                             <div class="card-meta"><i data-feather="map-pin" style="width:12px;"></i> ${ad.address}</div>
-                            <div class="card-price">${num(ad.price)} so'm</div>
+                            <div class="card-price">${num(ad.price)} ${ad.currency}</div>
                         </div>
                     </div>
                 `).join('');
@@ -504,39 +762,42 @@
                     const res = await fetch(`${API_BASE}/rating`);
                     const data = await res.json();
                     if(data.length === 0) {
-                        podium.innerHTML = `<div style="text-align: center; color: var(--text-3);">Reyting bo'sh</div>`;
+                        podium.innerHTML = `<div style="text-align: center; color: var(--text-3); padding: 20px;">Reyting bo'sh</div>`;
                         return;
                     }
 
                     const top3 = data.slice(0, 3);
                     const rest = data.slice(3);
 
-                    podium.innerHTML = `
+                    let podiumHtml = '';
+                    if (top3[1]) podiumHtml += `
                         <div class="podium-item podium-2" style="order:1;">
-                            <img src="https://ui-avatars.com/api/?name=${top3[1]?.name || 'U'}&background=3B82F6&color=fff" class="podium-avatar">
-                            <div class="podium-name">${top3[1]?.name || ''}</div>
-                            <div class="podium-score">${top3[1]?.score || 0}</div>
+                            <img src="${top3[1].avatar}" class="podium-avatar">
+                            <div class="podium-name">${top3[1].name}</div>
+                            <div class="podium-score">${top3[1].score}</div>
                             <div class="podium-block">2</div>
-                        </div>
+                        </div>`;
+                    if (top3[0]) podiumHtml += `
                         <div class="podium-item podium-1" style="order:2;">
                             <div class="crown">👑</div>
-                            <img src="https://ui-avatars.com/api/?name=${top3[0]?.name || 'U'}&background=3B82F6&color=fff" class="podium-avatar">
-                            <div class="podium-name">${top3[0]?.name || ''}</div>
-                            <div class="podium-score">${top3[0]?.score || 0}</div>
+                            <img src="${top3[0].avatar}" class="podium-avatar">
+                            <div class="podium-name">${top3[0].name}</div>
+                            <div class="podium-score">${top3[0].score}</div>
                             <div class="podium-block">1</div>
-                        </div>
+                        </div>`;
+                    if (top3[2]) podiumHtml += `
                         <div class="podium-item podium-3" style="order:3;">
-                            <img src="https://ui-avatars.com/api/?name=${top3[2]?.name || 'U'}&background=3B82F6&color=fff" class="podium-avatar">
-                            <div class="podium-name">${top3[2]?.name || ''}</div>
-                            <div class="podium-score">${top3[2]?.score || 0}</div>
+                            <img src="${top3[2].avatar}" class="podium-avatar">
+                            <div class="podium-name">${top3[2].name}</div>
+                            <div class="podium-score">${top3[2].score}</div>
                             <div class="podium-block">3</div>
-                        </div>
-                    `;
+                        </div>`;
+                    podium.innerHTML = podiumHtml;
 
                     list.innerHTML = rest.map((u, i) => `
-                        <div class="card" style="padding: 12px; display: flex; align-items: center; gap: 12px;">
-                            <div style="font-weight: 800; color: var(--text-3); width: 20px;">${i+4}</div>
-                            <div style="flex: 1; font-weight: 700;">${u.name}</div>
+                        <div class="card" style="padding: 16px; display: flex; align-items: center; gap: 16px;">
+                            <div style="font-weight: 800; color: var(--text-3); width: 24px; font-size: 16px;">${i+4}</div>
+                            <div style="flex: 1; font-weight: 800; font-size: 15px;">${u.name}</div>
                             <div style="font-weight: 800; color: var(--blue);">${u.score} ball</div>
                         </div>
                     `).join('');
@@ -544,105 +805,36 @@
             }
         };
 
-        const MyAds = {
-            async load() {
-                const list = $('myads-list');
-                try {
-                    const res = await fetch(`${API_BASE}/user/ads`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
-                    const ads = await res.json();
-                    if(ads.length === 0) {
-                        list.innerHTML = `<div style="text-align:center; color:var(--text-3);">Sizda e'lonlar yo'q</div>`;
-                        return;
-                    }
-                    list.innerHTML = ads.map(ad => `
-                        <div class="card" style="padding: 12px; display: flex; gap: 12px; margin-bottom: 10px;">
-                            <img src="${ad.photos[0] || 'https://via.placeholder.com/60'}" style="width: 60px; height: 60px; border-radius: 8px; object-fit: cover;">
-                            <div>
-                                <div style="font-weight: 700;">${ad.breed}</div>
-                                <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Holat: ${ad.status}</div>
-                            </div>
-                        </div>
-                    `).join('');
-                } catch(e) {}
-            }
-        };
-
-        const CreateAd = {
-            async submit() {
-                const breed = $('ad-breed').value;
-                const price = $('ad-price').value;
-                const address = $('ad-address').value;
-                const phone = $('ad-phone').value;
-                const photosInput = $('ad-photos');
-
-                if(!breed || !price || !address || !phone) {
-                    return UI.toast("Barcha maydonlarni to'ldiring!");
-                }
-                if(photosInput.files.length === 0) {
-                    return UI.toast("Kamida 1 ta rasm yuklang!");
-                }
-
-                const btn = $('btn-submit-ad');
-                btn.innerText = "Yuborilmoqda...";
-                btn.disabled = true;
-
-                // Rasmlarni Base64 ga o'girish
-                const photos = [];
-                for (let i = 0; i < photosInput.files.length; i++) {
-                    const file = photosInput.files[i];
-                    const base64 = await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onload = (e) => resolve(e.target.result);
-                        reader.readAsDataURL(file);
-                    });
-                    photos.push(base64);
-                }
-
-                try {
-                    const res = await fetch(`${API_BASE}/ads`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
-                        body: JSON.stringify({
-                            tariff: 'web_only',
-                            cat_count: 1,
-                            photos: photos,
-                            breed, price, address, phone,
-                            age: "1 yosh", gender: "Erkak", health: "Sog'lom", sterilization: "Ha", currency: "so'm", title: breed
-                        })
-                    });
-
-                    if(!res.ok) throw new Error("Reklama yaratishda xatolik");
-
-                    UI.toast("E'lon qabul qilindi!");
-                    UI.showPage('p-dashboard');
-                    UI.loadData(); // Balansni yangilash
-                } catch(e) {
-                    UI.toast(e.message);
-                } finally {
-                    btn.innerText = "Tasdiqlash va To'lov";
-                    btn.disabled = false;
-                }
-            }
-        };
-
         const Topup = {
             timer: null,
+            setAmount(val, btn) {
+                $('topup-amount').value = val;
+                document.querySelectorAll('.qa-btn').forEach(b => b.classList.remove('active'));
+                if(btn) btn.classList.add('active');
+            },
+            updateAmounts(val) {
+                document.querySelectorAll('.qa-btn').forEach(b => b.classList.remove('active'));
+            },
             async start() {
-                const amt = $('topup-amount').value;
+                const amt = parseInt($('topup-amount').value);
                 if(!amt || amt < 1000) return UI.toast("Minimal 1000 so'm");
 
                 try {
                     const res = await fetch(`${API_BASE}/topup`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
-                        body: JSON.stringify({ amount: parseInt(amt) })
+                        body: JSON.stringify({ amount: amt })
                     });
                     const data = await res.json();
 
-                    STATE.payment_id = data.payment_id; // Payment ID ni saqlaymiz!
+                    if(!res.ok) throw new Error(data.detail || "Xatolik");
+
+                    STATE.payment_id = data.payment_id;
 
                     $('topup-info').classList.remove('hidden');
                     $('t-card').innerText = data.card_number;
+                    $('t-holder').innerText = data.card_holder;
+                    $('t-sum').innerText = num(data.amount) + " so'm";
 
                     let time = data.timer_seconds || 600;
                     clearInterval(this.timer);
@@ -656,7 +848,12 @@
                         }
                         time--;
                     }, 1000);
-                } catch(e) { UI.toast("Xatolik"); }
+                    UI.toast("To'lov yaratildi!");
+                } catch(e) { UI.toast(e.message); }
+            },
+            copyCard() {
+                const card = $('t-card').innerText.replace(/\s/g, '');
+                navigator.clipboard.writeText(card).then(() => UI.toast("Karta nusxalandi!"));
             },
             async upload(input) {
                 if(!input.files[0]) return;
@@ -665,6 +862,10 @@
                 const formData = new FormData();
                 formData.append('payment_id', STATE.payment_id);
                 formData.append('file', input.files[0]);
+
+                const btn = input.parentElement;
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = `<div class="spinner"></div>`;
 
                 try {
                     const res = await fetch(`${API_BASE}/topup/receipt`, {
@@ -675,64 +876,298 @@
                     if(res.ok) {
                         UI.toast("Chek yuklandi! Admin tasdiqlaydi.");
                         clearInterval(this.timer);
-                        UI.closeModal('m-topup');
+                        setTimeout(() => UI.showPage('p-dashboard'), 1500);
+                    } else {
+                        throw new Error("Xatolik");
                     }
-                } catch(e) { UI.toast("Chekni yuklashda xatolik"); }
+                } catch(e) { 
+                    UI.toast("Chekni yuklashda xatolik"); 
+                    btn.innerHTML = originalHtml;
+                }
+            }
+        };
+
+        const CreateAd = {
+            reset() {
+                STATE.adState = { step: 1, cat_count: 1, tariff: '', photos: [], cats: [], currentCatIndex: 0, address: '', phone: '', username: '', price: '', currency: "so'm" };
+                this.nextStep(1);
+            },
+            nextStep(step) {
+                STATE.adState.step = step;
+                document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active'));
+                $(`w-step-${step}`).classList.add('active');
+                $('w-progress').style.width = `${(step/7)*100}%`;
+
+                if(step === 2) this.renderTariffs();
+                if(step === 4) this.renderCatForm();
+            },
+            setCount(count) {
+                STATE.adState.cat_count = count;
+                this.nextStep(2);
+            },
+            renderTariffs() {
+                const list = $('tariff-list');
+                const count = STATE.adState.cat_count;
+                list.innerHTML = Object.keys(TARIFFS).map(key => {
+                    const t = TARIFFS[key];
+                    const price = t.prices[count];
+                    return `
+                        <div class="tariff-card" onclick="CreateAd.selectTariff('${key}', this)">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-weight: 800; font-size: 16px;">${t.name}</div>
+                                <div class="tariff-price">${num(price)} <span style="font-size: 14px;">so'm</span></div>
+                            </div>
+                            <ul class="tariff-features">
+                                ${key !== 'channel_only' ? '<li><i data-feather="check"></i> Botning asosiy sahifasida chiqadi</li>' : ''}
+                                ${key !== 'web_only' ? '<li><i data-feather="check"></i> Kanallarga post qilinadi</li>' : ''}
+                                <li><i data-feather="check"></i> 24/7 Qo'llab-quvvatlash</li>
+                            </ul>
+                        </div>
+                    `;
+                }).join('');
+                feather.replace();
+            },
+            selectTariff(key, el) {
+                STATE.adState.tariff = key;
+                document.querySelectorAll('.tariff-card').forEach(c => c.classList.remove('selected'));
+                el.classList.add('selected');
+            },
+            checkBalance() {
+                if(!STATE.adState.tariff) return UI.toast("Tarifni tanlang!");
+                const price = TARIFFS[STATE.adState.tariff].prices[STATE.adState.cat_count];
+                if(STATE.user.balance < price) {
+                    UI.toast("Mablag' yetarli emas!");
+                    return UI.showPage('p-topup');
+                }
+                this.nextStep(3);
+            },
+            handleFiles(input) {
+                if (input.files.length > 3) return UI.toast("Maksimal 3 ta rasm!");
+                STATE.adState.photos = Array.from(input.files);
+                const box = $('preview-box');
+                box.innerHTML = '';
+                STATE.adState.photos.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        box.innerHTML += `<img src="${e.target.result}" style="width:100%; height:80px; object-fit:cover; border-radius:8px;">`;
+                    };
+                    reader.readAsDataURL(file);
+                });
+            },
+            renderCatForm() {
+                const idx = STATE.adState.currentCatIndex;
+                $('cat-detail-title').innerText = `${idx + 1}-mushuk ma'lumotlari`;
+            },
+            saveCat() {
+                const cat = {
+                    breed: $('c-breed').value,
+                    age: $('c-age').value,
+                    gender: $('c-gender').value,
+                    health: $('c-health').value
+                };
+                STATE.adState.cats.push(cat);
+                STATE.adState.currentCatIndex++;
+
+                if(STATE.adState.currentCatIndex < STATE.adState.cat_count) {
+                    this.renderCatForm();
+                } else {
+                    this.nextStep(5);
+                }
+            },
+            fillUsername() {
+                if (tg?.initDataUnsafe?.user?.username) {
+                    $('ad-username').value = '@' + tg.initDataUnsafe.user.username;
+                } else {
+                    UI.toast("Telegram username topilmadi");
+                }
+            },
+            setCurrency(curr, btn) {
+                STATE.adState.currency = curr;
+                document.querySelectorAll('#w-step-6 .btn-outline').forEach(b => b.style.borderColor = 'var(--border)');
+                btn.style.borderColor = 'var(--blue)';
+            },
+            preview() {
+                const phone = $('ad-phone').value;
+                const username = $('ad-username').value;
+                const address = $('ad-address').value;
+                const price = $('ad-price').value;
+
+                if(!phone || !price) return UI.toast("Maydonlarni to'ldiring!");
+
+                STATE.adState.phone = phone;
+                STATE.adState.username = username;
+                STATE.adState.address = address;
+                STATE.adState.price = price;
+
+                const tariffName = TARIFFS[STATE.adState.tariff].name;
+                const cost = TARIFFS[STATE.adState.tariff].prices[STATE.adState.cat_count];
+
+                $('preview-data').innerHTML = `
+                    <div style="font-size: 13px; color: var(--text-3); margin-bottom: 8px;">Tarif: <b style="color:var(--blue)">${tariffName}</b></div>
+                    <div style="font-size: 15px; font-weight: 700; margin-bottom: 8px;">${STATE.adState.cat_count} ta mushuk</div>
+                    <div style="font-size: 13px; margin-bottom: 4px;">📍 ${address}</div>
+                    <div style="font-size: 13px; margin-bottom: 4px;">📞 ${phone} ${username ? '('+username+')' : ''}</div>
+                    <div style="font-size: 18px; font-weight: 800; color: var(--blue); margin-top: 12px;">${num(price)} ${STATE.adState.currency}</div>
+                    <hr style="border-color: var(--border); margin: 12px 0;">
+                    <div style="font-size: 14px;">Yechiladi: <b style="color: var(--red);">${num(cost)} so'm</b></div>
+                `;
+
+                if(STATE.user.balance < cost) {
+                    $('balance-warning').classList.remove('hidden');
+                    $('balance-warning').innerText = "Diqqat! Hisobingizda mablag' yetarli emas.";
+                } else {
+                    $('balance-warning').classList.add('hidden');
+                }
+
+                this.nextStep(7);
+            },
+            async submit() {
+                const cost = TARIFFS[STATE.adState.tariff].prices[STATE.adState.cat_count];
+                if(STATE.user.balance < cost) return UI.toast("Mablag' yetarli emas!");
+
+                const btn = $('w-step-7').querySelector('.btn-primary');
+                btn.innerHTML = `<div class="spinner" style="width:20px; height:20px; border-width:2px; margin:0;"></div>`;
+                btn.disabled = true;
+
+                const formData = new FormData();
+                formData.append('tariff', STATE.adState.tariff);
+                formData.append('cat_count', STATE.adState.cat_count);
+                formData.append('cats_data', JSON.stringify(STATE.adState.cats));
+                formData.append('address', STATE.adState.address);
+                formData.append('phone', STATE.adState.phone);
+                formData.append('price', STATE.adState.price);
+                formData.append('currency', STATE.adState.currency);
+                
+                STATE.adState.photos.forEach(file => formData.append('photos', file));
+
+                try {
+                    const res = await fetch(`${API_BASE}/ads`, {
+                        method: 'POST',
+                        headers: { 'X-Telegram-Init-Data': TOKEN },
+                        body: formData
+                    });
+
+                    if(!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.detail || "Xatolik");
+                    }
+
+                    UI.toast("E'lon muvaffaqiyatli yaratildi!");
+                    UI.showPage('p-dashboard');
+                    UI.loadData(); // Balansni yangilash
+                } catch(e) {
+                    UI.toast(e.message);
+                } finally {
+                    btn.innerText = "Tasdiqlash va To'lov";
+                    btn.disabled = false;
+                }
+            }
+        };
+
+        const MyAds = {
+            async load() {
+                const list = $('myads-list');
+                list.innerHTML = '<div class="spinner"></div>';
+                try {
+                    const res = await fetch(`${API_BASE}/user/ads`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
+                    const ads = await res.json();
+                    
+                    if(ads.length === 0) {
+                        list.innerHTML = `<div style="text-align:center; color:var(--text-3); padding: 30px;">Sizda e'lonlar yo'q</div>`;
+                        return;
+                    }
+
+                    const statusMap = { 'pending': '⏳ Kutilmoqda', 'approved': '✅ Tasdiqlangan', 'rejected': '❌ Rad etilgan' };
+
+                    list.innerHTML = ads.map(ad => `
+                        <div class="card" style="padding: 12px; display: flex; gap: 12px; align-items: center;">
+                            <img src="${ad.photos[0] ? API_BASE.replace('/api','') + ad.photos[0] : 'https://via.placeholder.com/60'}" style="width: 70px; height: 70px; border-radius: 12px; object-fit: cover;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 800; font-size: 15px;">${ad.cats_data?.[0]?.breed || 'Mushuk'}</div>
+                                <div style="font-size: 13px; color: var(--text-2); margin-top: 4px;">Holat: ${statusMap[ad.status] || ad.status}</div>
+                            </div>
+                            ${ad.status === 'approved' ? `
+                                <button class="btn btn-outline" style="width: auto; padding: 8px 12px; font-size: 12px;" onclick="MyAds.markDone(${ad.id})">Sotildi</button>
+                            ` : ''}
+                        </div>
+                    `).join('');
+                } catch(e) { list.innerHTML = '<div style="text-align:center; color:var(--red);">Xatolik</div>'; }
+            },
+            async markDone(id) {
+                if(!confirm("Rostdan ham bu e'lonni sotilgan deb belgilaysizmi?")) return;
+                try {
+                    const res = await fetch(`${API_BASE}/ads/${id}`, { method: 'DELETE', headers: { 'X-Telegram-Init-Data': TOKEN } });
+                    if(res.ok) {
+                        UI.toast("E'lon sotildi deb belgilandi!");
+                        this.load();
+                    }
+                } catch(e) { UI.toast("Xatolik"); }
             }
         };
 
         const Admin = {
+            currentTab: 'stats',
             async load() {
                 try {
                     const res = await fetch(`${API_BASE}/admin/stats`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
                     const data = await res.json();
-                    $('stat-today').innerText = num(data.today_income);
-                    $('stat-month').innerText = num(data.month_income);
+                    
+                    $('stat-total-ads').innerText = data.total_ads;
+                    $('stat-total-users').innerText = data.total_users;
+                    $('stat-pending').innerText = data.pending_ads;
+                    $('stat-cards').innerText = data.total_cards;
+
+                    $('inc-today').innerText = num(data.today_income) + " so'm";
+                    $('inc-yesterday').innerText = num(data.yesterday_income) + " so'm";
+                    $('inc-week').innerText = num(data.week_income) + " so'm";
+                    $('inc-month').innerText = num(data.month_income) + " so'm";
+                } catch(e) {}
+            },
+            setTab(tab, btn) {
+                document.querySelectorAll('#p-admin .tab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                document.querySelectorAll('#p-admin [id^="admin-tab-"]').forEach(el => el.classList.add('hidden'));
+                $(`admin-tab-${tab}`).classList.remove('hidden');
+                if(tab === 'ads') this.loadAds();
+            },
+            async loadAds() {
+                const list = $('admin-ads-list');
+                list.innerHTML = '<div class="spinner"></div>';
+                try {
+                    const res = await fetch(`${API_BASE}/admin/ads`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
+                    const ads = await res.json();
+                    list.innerHTML = ads.slice(0, 20).map(ad => `
+                        <div class="card" style="padding: 12px;">
+                            <div style="font-weight: 800;">${ad.cats_data?.[0]?.breed || 'Noma\'lum'} <span style="font-size:10px; color:var(--text-3);">#${ad.id}</span></div>
+                            <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Holat: ${ad.status}</div>
+                        </div>
+                    `).join('');
                 } catch(e) {}
             },
             async saveCard() {
-                const num = $('adm-card').value;
-                const holder = $('adm-holder').value;
+                const number = $('adm-card-num').value;
+                const holder = $('adm-card-holder').value;
+                if(!number || !holder) return UI.toast("To'ldiring!");
                 try {
                     await fetch(`${API_BASE}/admin/card`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
-                        body: JSON.stringify({ number: num, holder: holder })
+                        body: JSON.stringify({ number, holder })
                     });
                     UI.toast("Karta saqlandi!");
-                    UI.closeModal('m-card');
-                } catch(e) {}
-            },
-            async ubSend() {
-                const phone = $('ub-phone').value;
-                try {
-                    await fetch(`${API_BASE}/admin/userbot/send_code`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
-                        body: JSON.stringify({ phone: phone })
-                    });
-                    $('ub-step-1').classList.add('hidden');
-                    $('ub-step-2').classList.remove('hidden');
-                    UI.toast("Kod yuborildi");
-                } catch(e) {}
-            },
-            async ubVerify() {
-                const phone = $('ub-phone').value;
-                const code = $('ub-code').value;
-                const password = $('ub-pass').value;
-                try {
-                    await fetch(`${API_BASE}/admin/userbot/verify_code`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
-                        body: JSON.stringify({ phone, code, password: password || null })
-                    });
-                    UI.toast("Userbot ulandi!");
-                    UI.closeModal('m-userbot');
+                    $('adm-card-num').value = '';
+                    $('adm-card-holder').value = '';
                 } catch(e) {}
             }
         };
 
+        // Event Listeners
         document.addEventListener("DOMContentLoaded", () => UI.init());
+        
+        // Nav FAB uchun maxsus click
+        document.querySelector('.nav-fab').addEventListener('click', () => {
+            CreateAd.reset();
+        });
     </script>
 </body>
 </html>
