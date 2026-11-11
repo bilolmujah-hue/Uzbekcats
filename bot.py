@@ -8,20 +8,21 @@ import asyncio
 import json
 import logging
 import re
+import traceback
 from datetime import datetime, timedelta
 from html import escape as html_escape
 
 from aiogram import Bot, Dispatcher, F, Router, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     BotCommand, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
     KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove,
-    ChatPermissions, InputMediaPhoto, InputMediaVideo
+    ChatPermissions, InputMediaPhoto, InputMediaVideo, ErrorEvent
 )
 
 from telethon import TelegramClient, events
@@ -51,6 +52,31 @@ CHANNEL_HADIYA_LINK = BotConfig.CHANNEL_HADIYA_LINK
 BOT_LINK = BotConfig.BOT_LINK
 
 userbot_client: TelegramClient | None = None
+
+# =====================================================================
+# GLOBAL XATOLARNI USHLAGICH (Error Handler)
+# =====================================================================
+@dp.errors()
+async def global_error_handler(event: ErrorEvent):
+    """
+    Botda yuz beradigan har qanday kutilmagan xatoni ushlaydi va logga yozadi.
+    Bot qotib qolmaydi, foydalanuvchiga xabar yuboradi.
+    """
+    logger.error(f"❌ Kutilmagan xato: {event.exception}\n{traceback.format_exc()}")
+    
+    # Agar xabar foydalanuvchidan kelgan bo'lsa, unga xabar berishga harakat qilamiz
+    update = event.update
+    if update.message:
+        try:
+            await update.message.answer("❌ Kechirasiz, tizimda kutilmagan xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring yoki adminga murojaat qiling.")
+        except Exception:
+            pass
+    elif update.callback_query:
+        try:
+            await update.callback_query.answer("❌ Tizim xatosi. Iltimos qaytadan urinib ko'ring.", show_alert=True)
+        except Exception:
+            pass
+    return True
 
 # =====================================================================
 # YORDAMCHI FUNKSIYALAR (Eski xabarlar va xatolarni oldini olish)
@@ -141,8 +167,8 @@ async def check_subscription(user_id: int) -> tuple[bool, bool]:
                 sotish_ok = ok
             else:
                 hadiya_ok = ok
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Obunani tekshirishda xato (chat_id={chat_id}): {e}")
     return sotish_ok, hadiya_ok
 
 def get_sub_text(sotish_ok: bool, hadiya_ok: bool) -> str:
@@ -279,19 +305,32 @@ def get_simple_kb(options: list, prefix: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 # =====================================================================
-# KANALGA POST (XATO TUZATILDI: "message is not modified")
+# KANALGA POST (XATO TUZATILDI: "message is not modified" va Albom)
 # =====================================================================
 async def post_to_channel(ad_data: dict):
     ad_type = ad_data.get("ad_type")
-    breed = html_escape(str(ad_data.get("breed") or "—"))
-    age = html_escape(str(ad_data.get("age") or "—"))
-    gender = html_escape(str(ad_data.get("gender") or "—"))
-    sterilization = html_escape(str(ad_data.get("sterilization") or "—"))
-    health = html_escape(str(ad_data.get("health") or "—"))
     address = html_escape(str(ad_data.get("address") or "—"))
     phone = html_escape(str(ad_data.get("phone") or "—"))
     price = html_escape(str(ad_data.get("price") or "0"))
     currency = html_escape(str(ad_data.get("currency") or "so'm"))
+
+    cats_data = ad_data.get("cats_data") or []
+    if isinstance(cats_data, str):
+        try: cats_data = json.loads(cats_data)
+        except: cats_data = []
+
+    if not cats_data:
+        cats_data = [{
+            "breed": ad_data.get("breed") or "—",
+            "age": ad_data.get("age") or "—",
+            "gender": ad_data.get("gender") or "—",
+            "health": ad_data.get("health") or "—",
+            "sterilization": ad_data.get("sterilization") or "—"
+        }]
+
+    cats_text = ""
+    for i, cat in enumerate(cats_data, 1):
+        cats_text += f"🐱 <b>{i}-mushuk:</b> {html_escape(str(cat.get('breed', '—')))} | {html_escape(str(cat.get('age', '—')))} | {html_escape(str(cat.get('gender', '—')))} | {html_escape(str(cat.get('health', '—')))} | {html_escape(str(cat.get('sterilization', '—')))}\n"
 
     footer = (
         '👤 <a href="https://t.me/zayd_catlover">Admin</a>\n'
@@ -300,20 +339,18 @@ async def post_to_channel(ad_data: dict):
     )
 
     if ad_type == "sotish":
-        caption = f"#SOTILADI 💰\n\n📝 {breed} | {age} | {gender} | {sterilization} | {health}\n\n📍 Manzil: {address}\n💵 Narxi: {price} {currency}\n📞 Tel: {phone}\n\n{footer}"
+        caption = f"#SOTILADI 💰\n\n{cats_text}\n📍 Manzil: {address}\n💵 Narxi: {price} {currency}\n📞 Tel: {phone}\n\n{footer}"
         target = CHANNEL_SOTISH_ID
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎁 Hadiya kanal", url=CHANNEL_HADIYA_LINK)], [InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]])
     else:
-        caption = f"#HADIYA 🎁\n\n📝 {breed} | {age} | {gender} | {sterilization} | {health}\n\n📍 Manzil: {address}\n📞 Tel: {phone}\n\n{footer}"
+        caption = f"#HADIYA 🎁\n\n{cats_text}\n📍 Manzil: {address}\n📞 Tel: {phone}\n\n{footer}"
         target = CHANNEL_HADIYA_ID
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💰 Sotiladi kanal", url=CHANNEL_SOTISH_LINK)], [InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]])
 
     photos = ad_data.get("photos") or []
     if isinstance(photos, str):
-        try:
-            photos = json.loads(photos)
-        except:
-            photos = []
+        try: photos = json.loads(photos)
+        except: photos = []
 
     try:
         if len(photos) > 1:
@@ -328,7 +365,6 @@ async def post_to_channel(ad_data: dict):
             sent_messages = await bot.send_media_group(chat_id=target, media=media_group)
             sent = sent_messages[0]
             
-            # "message is not modified" xatosini ushlab qolish
             try:
                 await bot.edit_message_reply_markup(chat_id=target, message_id=sent.message_id, reply_markup=kb)
             except TelegramBadRequest as e:
@@ -352,6 +388,9 @@ async def post_to_channel(ad_data: dict):
 # MIDDLEWARE (Mute va Ban)
 # =====================================================================
 async def check_user_middleware(handler, event: Message, data: dict):
+    if not hasattr(event, 'from_user') or not event.from_user:
+        return await handler(event, data)
+
     user_id = event.from_user.id
     if user_id in BotConfig.ADMIN_IDS:
         return await handler(event, data)
@@ -477,8 +516,14 @@ async def process_phone(message: Message, state: FSMContext):
     
     try:
         user = await db.create_user(message.from_user.id, username, full_name, phone, data.get("referral_code"))
+    except ValueError as ve:
+        # Telefon raqam bandligi xatosi
+        await message.answer(f"❌ {str(ve)}")
+        return
     except Exception as e:
-        await message.answer(f"❌ Xatolik: {e}")
+        # Boshqa DB xatolari
+        logger.error(f"Ro'yxatdan o'tishda xato: {e}")
+        await message.answer(f"❌ Tizimda xatolik yuz berdi. Iltimos keyinroq qayta urinib ko'ring.")
         return
 
     await message.answer(Texts.REG_SUCCESS.format(user_number=user["user_number"], score=user["score"], referrals=0), reply_markup=ReplyKeyboardRemove())
@@ -512,8 +557,8 @@ async def menu_konkurs(call: CallbackQuery):
 
 @router.callback_query(F.data == "menu_rating")
 async def menu_rating(call: CallbackQuery):
-    top_users = await db.get_top_10_users()
-    text = "🥇 <b>Eng faol foydalanuvchilar (Top 10)</b>\n\n"
+    top_users = await db.get_top_users(limit=50)
+    text = "🥇 <b>Eng faol foydalanuvchilar (Top 50)</b>\n\n"
     if not top_users:
         text += "Hozircha reyting mavjud emas."
     else:
@@ -557,8 +602,15 @@ async def menu_my_orders(call: CallbackQuery):
     
     for ad in ads:
         st = st_map.get(ad["status"], ad["status"])
-        breed = html_escape(str(ad.get("breed") or "—"))
-        text = f"🐱 <b>{breed}</b> | {st}\n📅 {ad['created_at'].strftime('%d.%m.%Y')}"
+        
+        cats_data = ad.get("cats_data") or []
+        if isinstance(cats_data, str):
+            try: cats_data = json.loads(cats_data)
+            except: cats_data = []
+            
+        breed_display = cats_data[0].get("breed", "—") if cats_data else ad.get("breed", "—")
+        
+        text = f"🐱 <b>{html_escape(str(breed_display))}</b> | {st}\n📅 {ad['created_at'].strftime('%d.%m.%Y')}"
         
         kb = None
         if ad["status"] == "approved":
@@ -567,10 +619,8 @@ async def menu_my_orders(call: CallbackQuery):
             
         photos = ad.get("photos") or []
         if isinstance(photos, str):
-            try:
-                photos = json.loads(photos)
-            except:
-                photos = []
+            try: photos = json.loads(photos)
+            except: photos = []
             
         if photos:
             if len(photos[0]) > 100 or photos[0].endswith(".mp4"):
@@ -598,11 +648,9 @@ async def user_mark_ad_done(call: CallbackQuery):
         try:
             target_chat = CHANNEL_SOTISH_ID if ad["ad_type"] == "sotish" else CHANNEL_HADIYA_ID
             old_caption = f"#SOTILDI 💰" if ad["ad_type"] == "sotish" else f"#BERILDI 🎁"
-            breed = html_escape(str(ad.get("breed") or "—"))
-            age = html_escape(str(ad.get("age") or "—"))
             address = html_escape(str(ad.get("address") or "—"))
             
-            new_caption = f"{old_caption}\n\n📝 {breed} | {age}\n\n📍 Manzil: {address}\n📞 Tel: <i>Yashirilgan</i>\n\n✅ <b>E'LON {action_text.upper()}!</b>"
+            new_caption = f"{old_caption}\n\n📍 Manzil: {address}\n📞 Tel: <i>Yashirilgan</i>\n\n✅ <b>E'LON {action_text.upper()}!</b>"
             
             if ad.get("photos"):
                 await bot.edit_message_caption(chat_id=target_chat, message_id=ad["channel_message_id"], caption=new_caption, reply_markup=None)
@@ -679,7 +727,8 @@ async def process_continue_media(call: CallbackQuery, state: FSMContext):
     if not data.get("photos"):
         await safe_answer(call, "❌ Iltimos, media yuboring!", show_alert=True)
         return
-    await safe_edit_text(call.message, Texts.BREED_ASK, reply_markup=get_breed_kb(0))
+    await state.update_data(current_cat_index=1, cats_data=[])
+    await safe_edit_text(call.message, f"🐱 <b>1-mushuk zotini tanlang:</b>", reply_markup=get_breed_kb(0))
     await state.set_state(AdStates.choosing_breed)
 
 @router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_page_"))
@@ -691,45 +740,82 @@ async def breed_page(call: CallbackQuery):
 async def process_breed(call: CallbackQuery, state: FSMContext):
     parts = call.data.split("_")
     breed = DataLists.BREEDS[int(parts[1])][int(parts[2])]
-    await state.update_data(breed=breed)
-    await safe_edit_text(call.message, Texts.AGE_ASK, reply_markup=get_age_kb())
+    await state.update_data(current_breed=breed)
+    data = await state.get_data()
+    idx = data.get("current_cat_index", 1)
+    await safe_edit_text(call.message, f"🎂 <b>{idx}-mushuk yoshini tanlang:</b>", reply_markup=get_age_kb())
     await state.set_state(AdStates.choosing_age)
 
 @router.callback_query(AdStates.choosing_breed, F.data == "breed_custom")
 async def custom_breed(call: CallbackQuery, state: FSMContext):
-    await safe_edit_text(call.message, Texts.BREED_CUSTOM_ASK, reply_markup=None)
+    data = await state.get_data()
+    idx = data.get("current_cat_index", 1)
+    await safe_edit_text(call.message, f"✏️ <b>{idx}-mushuk zotini yozing:</b>", reply_markup=None)
     await state.set_state(AdStates.custom_breed)
 
 @router.message(AdStates.custom_breed)
 async def process_custom_breed(message: Message, state: FSMContext):
-    await state.update_data(breed=message.text)
-    await message.answer(Texts.AGE_ASK, reply_markup=get_age_kb())
+    await state.update_data(current_breed=message.text)
+    data = await state.get_data()
+    idx = data.get("current_cat_index", 1)
+    await message.answer(f"🎂 <b>{idx}-mushuk yoshini tanlang:</b>", reply_markup=get_age_kb())
     await state.set_state(AdStates.choosing_age)
 
 @router.callback_query(AdStates.choosing_age, F.data.startswith("age_"))
 async def process_age(call: CallbackQuery, state: FSMContext):
     age = call.data.replace("age_", "").replace("_", " ")
-    await state.update_data(age=age)
-    await safe_edit_text(call.message, Texts.HEALTH_ASK, reply_markup=get_simple_kb([("Sog'lom", "soglom"), ("Kasal", "kasal")], "health"))
+    await state.update_data(current_age=age)
+    data = await state.get_data()
+    idx = data.get("current_cat_index", 1)
+    await safe_edit_text(call.message, f"❤️ <b>{idx}-mushuk sog'lig'ini tanlang:</b>", reply_markup=get_simple_kb([("Sog'lom", "soglom"), ("Kasal", "kasal")], "health"))
     await state.set_state(AdStates.choosing_health)
 
 @router.callback_query(AdStates.choosing_health, F.data.startswith("health_"))
 async def process_health(call: CallbackQuery, state: FSMContext):
-    await state.update_data(health="Sog'lom" if "soglom" in call.data else "Kasal")
-    await safe_edit_text(call.message, Texts.GENDER_ASK, reply_markup=get_simple_kb([("♀️ Qiz bola", "qiz"), ("♂️ O'g'il bola", "ogil")], "gender"))
+    health = "Sog'lom" if "soglom" in call.data else "Kasal"
+    await state.update_data(current_health=health)
+    data = await state.get_data()
+    idx = data.get("current_cat_index", 1)
+    await safe_edit_text(call.message, f"👤 <b>{idx}-mushuk jinsini tanlang:</b>", reply_markup=get_simple_kb([("♀️ Qiz bola", "qiz"), ("♂️ O'g'il bola", "ogil")], "gender"))
     await state.set_state(AdStates.choosing_gender)
 
 @router.callback_query(AdStates.choosing_gender, F.data.startswith("gender_"))
 async def process_gender(call: CallbackQuery, state: FSMContext):
-    await state.update_data(gender="Qiz bola" if "qiz" in call.data else "O'g'il bola")
-    await safe_edit_text(call.message, Texts.STERILIZATION_ASK, reply_markup=get_simple_kb([("✅ Nasl olsa bo'ladi", "yes"), ("❌ Nasl olsa bo'lmaydi", "no")], "sterilization"))
+    gender = "Qiz bola" if "qiz" in call.data else "O'g'il bola"
+    await state.update_data(current_gender=gender)
+    data = await state.get_data()
+    idx = data.get("current_cat_index", 1)
+    await safe_edit_text(call.message, f"🧬 <b>{idx}-mushuk nasl olishi mumkinmi?</b>", reply_markup=get_simple_kb([("✅ Ha", "yes"), ("❌ Yo'q", "no")], "sterilization"))
     await state.set_state(AdStates.choosing_sterilization)
 
 @router.callback_query(AdStates.choosing_sterilization, F.data.startswith("sterilization_"))
 async def process_sterilization(call: CallbackQuery, state: FSMContext):
-    await state.update_data(sterilization="Nasl olish mumkin" if "yes" in call.data else "Nasl olish mumkin emas")
-    await safe_edit_text(call.message, Texts.ADDRESS_ASK, reply_markup=get_viloyat_kb())
-    await state.set_state(AdStates.waiting_address)
+    sterilization = "Nasl olish mumkin" if "yes" in call.data else "Nasl olish mumkin emas"
+    data = await state.get_data()
+    
+    new_cat = {
+        "breed": data.get("current_breed", "—"),
+        "age": data.get("current_age", "—"),
+        "health": data.get("current_health", "—"),
+        "gender": data.get("current_gender", "—"),
+        "sterilization": sterilization
+    }
+    
+    cats_data = data.get("cats_data", [])
+    cats_data.append(new_cat)
+    await state.update_data(cats_data=cats_data)
+    
+    idx = data.get("current_cat_index", 1)
+    total = data.get("cat_count", 1)
+    
+    if idx < total:
+        next_idx = idx + 1
+        await state.update_data(current_cat_index=next_idx)
+        await safe_edit_text(call.message, f"🐱 <b>{next_idx}-mushuk zotini tanlang:</b>", reply_markup=get_breed_kb(0))
+        await state.set_state(AdStates.choosing_breed)
+    else:
+        await safe_edit_text(call.message, Texts.ADDRESS_ASK, reply_markup=get_viloyat_kb())
+        await state.set_state(AdStates.waiting_address)
 
 @router.callback_query(AdStates.waiting_address, F.data.startswith("viloyat_"))
 async def process_address(call: CallbackQuery, state: FSMContext):
@@ -777,20 +863,20 @@ async def send_ad_preview(message: Message, state: FSMContext):
     phone_safe = html_escape(str(data.get('phone') or '—'))
     price_safe = html_escape(str(data.get('price') or '0'))
     currency_safe = html_escape(str(data.get('currency') or "so'm"))
-    breed_safe = html_escape(str(data.get('breed') or '—'))
-    age_safe = html_escape(str(data.get('age') or '—'))
-    gender_safe = html_escape(str(data.get('gender') or '—'))
-    health_safe = html_escape(str(data.get('health') or '—'))
-    sterilization_safe = html_escape(str(data.get('sterilization') or '—'))
+    
+    cats_data = data.get("cats_data", [])
+    cats_text = ""
+    for i, cat in enumerate(cats_data, 1):
+        cats_text += f"🐱 <b>{i}-mushuk:</b> {html_escape(str(cat.get('breed')))} | {html_escape(str(cat.get('age')))} | {html_escape(str(cat.get('gender')))}\n"
 
     caption = "📋 <b>Ma'lumotlaringizni tekshiring:</b>\n\n"
+    caption += f"{cats_text}\n"
     caption += f"📍 Manzil: {address_safe}\n📞 Tel: {phone_safe}\n"
     if data.get("ad_type") != "hadiya":
         caption += f"💰 Narx: {price_safe} {currency_safe}\n"
-    caption += f"🐱 Zot: {breed_safe}\n🎂 Yosh: {age_safe}\n👤 Jins: {gender_safe}\n❤️ Sog'liq: {health_safe}\n🧬 Nasl: {sterilization_safe}\n\n"
     
     if price > 0:
-        caption += f"💳 <b>Hisobingiz:</b> {user['balance']:,} so'm\n"
+        caption += f"\n💳 <b>Hisobingiz:</b> {user['balance']:,} so'm\n"
         caption += f"💸 <b>Yechiladi:</b> {price:,} so'm\n\n"
         if user['balance'] < price:
             caption += "❌ <b>Diqqat! Mablag' yetarli emas. Iltimos, hisobni to'ldiring.</b>"
@@ -828,10 +914,8 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
 
     new_ad = await db.create_ad(
         user_id=user["id"], ad_type=data.get("ad_type"), tariff="bot",
-        photos=data.get("photos", []), breed=data.get("breed"), age=data.get("age"),
-        gender=data.get("gender"), health=data.get("health"),
-        sterilization=data.get("sterilization"), address=data.get("address"),
-        phone=data.get("phone"), price=data.get("price", "0"),
+        photos=data.get("photos", []), cats_data=data.get("cats_data", []),
+        address=data.get("address"), phone=data.get("phone"), price=data.get("price", "0"),
         currency=data.get("currency", "so'm"), ad_number=(user.get("ad_count") or 0) + 1,
         cat_count=data.get("cat_count", 1), price_paid=price,
     )
@@ -839,21 +923,11 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     await safe_delete(call.message)
     await bot.send_message(call.from_user.id, Texts.AD_ACCEPTED)
 
-    u_name_safe = html_escape(user['username'] or '—')
-    ad_type_upper = str(data.get('ad_type')).upper()
-    b_safe = html_escape(str(data.get('breed') or '—'))
-    a_safe = html_escape(str(data.get('age') or '—'))
-    addr_safe = html_escape(str(data.get('address') or '—'))
-    ph_safe = html_escape(str(data.get('phone') or '—'))
+    admin_caption = f"🆕 <b>YANGI REKLAMA!</b>\n\n👤 Foydalanuvchi: #{user['user_number']} ({html_escape(user['username'] or '—')})\n📋 Turi: {str(data.get('ad_type')).upper()}\n📍 Manzil: {html_escape(str(data.get('address') or '—'))}\n📞 Tel: {html_escape(str(data.get('phone') or '—'))}\n💵 To'landi: {price:,} so'm\n\n"
     
-    admin_caption = f"🆕 <b>YANGI REKLAMA!</b>\n\n👤 Foydalanuvchi: #{user['user_number']} ({u_name_safe})\n📋 Turi: {ad_type_upper}\n🐱 Zot: {b_safe}\n🎂 Yosh: {a_safe}\n📍 Manzil: {addr_safe}\n📞 Tel: {ph_safe}\n"
-    
-    if data.get("ad_type") != "hadiya":
-        p_safe = html_escape(str(data.get('price') or '0'))
-        c_safe = html_escape(str(data.get('currency') or "so'm"))
-        admin_caption += f"💰 Narx: {p_safe} {c_safe}\n"
-        
-    admin_caption += f"💵 To'landi: {price:,} so'm"
+    cats_data = data.get("cats_data", [])
+    for i, cat in enumerate(cats_data, 1):
+        admin_caption += f"🐱 {i}-mushuk: {cat.get('breed')} | {cat.get('age')} | {cat.get('gender')}\n"
     
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{new_ad['id']}"),
@@ -876,7 +950,7 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     await state.clear()
 
 # =====================================================================
-# ADMIN: TASDIQLASH VA RAD ETISH (IKKI MARTA BOSISHNI OLDINI OLISH)
+# ADMIN: TASDIQLASH VA RAD ETISH
 # =====================================================================
 @router.callback_query(F.data.startswith("admin_approve_ad_"))
 async def tech_admin_approve(call: CallbackQuery):
@@ -960,7 +1034,6 @@ async def admin_edit_ad_menu(call: CallbackQuery, state: FSMContext):
     await state.update_data(edit_ad_id=ad_id)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🐱 Zotni o'zgartirish", callback_data="edit_field_breed"), InlineKeyboardButton(text="🎂 Yoshni o'zgartirish", callback_data="edit_field_age")],
         [InlineKeyboardButton(text="📍 Manzilni o'zgartirish", callback_data="edit_field_address"), InlineKeyboardButton(text="📞 Telefonni o'zgartirish", callback_data="edit_field_phone")],
         [InlineKeyboardButton(text="💰 Narxni o'zgartirish", callback_data="edit_field_price")],
         [InlineKeyboardButton(text="↩️ Bekor qilish", callback_data="admin_cancel_edit")]
@@ -973,7 +1046,7 @@ async def admin_edit_field_choose(call: CallbackQuery, state: FSMContext):
     field = call.data.replace("edit_field_", "")
     await state.update_data(edit_field=field)
     
-    field_names = {"breed": "Zotni", "age": "Yoshni", "address": "Manzilni", "phone": "Telefon raqamni", "price": "Narxni"}
+    field_names = {"address": "Manzilni", "phone": "Telefon raqamni", "price": "Narxni"}
     await safe_edit_text(call.message, f"Yangi {field_names.get(field, 'qiymatni')} kiriting:")
     await state.set_state(AdminStates.editing_ad_value)
 
@@ -987,15 +1060,7 @@ async def admin_edit_value_save(message: Message, state: FSMContext):
     
     ad = await db.get_ad(ad_id)
     
-    u_id = ad['user_id']
-    b_safe = html_escape(str(ad.get('breed') or '—'))
-    a_safe = html_escape(str(ad.get('age') or '—'))
-    addr_safe = html_escape(str(ad.get('address') or '—'))
-    ph_safe = html_escape(str(ad.get('phone') or '—'))
-    p_safe = html_escape(str(ad.get('price') or '0'))
-    c_safe = html_escape(str(ad.get('currency') or "so'm"))
-
-    admin_caption = f"🔄 <b>YANGILANGAN REKLAMA!</b>\n\n👤 User ID: {u_id}\n🐱 Zot: {b_safe}\n🎂 Yosh: {a_safe}\n📍 Manzil: {addr_safe}\n📞 Tel: {ph_safe}\n💰 Narx: {p_safe} {c_safe}\n"
+    admin_caption = f"🔄 <b>YANGILANGAN REKLAMA!</b>\n\n👤 User ID: {ad['user_id']}\n📍 Manzil: {html_escape(str(ad.get('address') or '—'))}\n📞 Tel: {html_escape(str(ad.get('phone') or '—'))}\n💰 Narx: {html_escape(str(ad.get('price') or '0'))}\n"
     
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{ad_id}"),
@@ -1005,10 +1070,8 @@ async def admin_edit_value_save(message: Message, state: FSMContext):
     
     photos = ad.get("photos") or []
     if isinstance(photos, str): 
-        try:
-            photos = json.loads(photos)
-        except:
-            photos = []
+        try: photos = json.loads(photos)
+        except: photos = []
     
     if photos:
         if len(photos[0]) > 50:
