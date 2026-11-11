@@ -1,7 +1,7 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: bot.py
-# TAVSIF: To'liq mukammal Telegram Bot (Aiogram v3) — barcha funksiyalar ishlaydi
+# TAVSIF: To'liq mukammal Telegram Bot (Aiogram v3) — Python 3.11 mos
 # ==============================================================================
 
 import asyncio
@@ -51,7 +51,7 @@ BOT_LINK = BotConfig.BOT_LINK
 userbot_client: TelegramClient | None = None
 
 # =====================================================================
-# YORDAMCHI
+# YORDAMCHI FUNKSIYALAR
 # =====================================================================
 async def safe_edit_text(message: Message, text: str, reply_markup=None):
     """Xavfsiz edit (text yoki photo message bo'lishi mumkin)."""
@@ -160,7 +160,7 @@ async def start_userbot(session_string: str):
 
 
 # =====================================================================
-# FSM
+# FSM HOLATLARI
 # =====================================================================
 class RegStates(StatesGroup):
     checking_subscription = State()
@@ -331,7 +331,7 @@ def get_preview_kb() -> InlineKeyboardMarkup:
 
 
 # =====================================================================
-# KANALGA POST
+# KANALGA POST YUBORISH
 # =====================================================================
 async def post_to_channel(ad_data: dict):
     """Kanalga post yuboradi. Xato bo'lsa raise qiladi."""
@@ -344,7 +344,10 @@ async def post_to_channel(ad_data: dict):
     address = html_escape(str(ad_data.get("address") or "—"))
     phone = html_escape(str(ad_data.get("phone") or "—"))
     price = html_escape(str(ad_data.get("price") or "0"))
-    currency = html_escape(str(ad_data.get("currency") or "so'm"))
+    
+    # Python 3.11 xatoligi oldini olish uchun alohida o'zgaruvchi
+    currency_raw = str(ad_data.get("currency") or "so'm")
+    currency = html_escape(currency_raw)
 
     footer = (
         '👤 <a href="https://t.me/zayd_catlover">Admin</a>\n'
@@ -423,12 +426,11 @@ async def check_user_middleware(handler, event: Message, data: dict):
 
     return await handler(event, data)
 
-
 dp.message.middleware(check_user_middleware)
 
 
 # =====================================================================
-# START + MAJBURIY OBUNA + RO'YXATDAN O'TISH
+# START VA RO'YXATDAN O'TISH
 # =====================================================================
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
@@ -521,7 +523,7 @@ async def process_phone(message: Message, state: FSMContext):
 
     try:
         user = await db.create_user(message.from_user.id, username, full_name, phone, referral_code)
-    except ValueError as e:
+    except Exception as e:
         await message.answer(f"❌ {e}")
         return
 
@@ -771,20 +773,37 @@ async def process_price(message: Message, state: FSMContext):
     await send_ad_preview(message, state)
 
 
+# =====================================================================
+# 🛠 PYTHON 3.11 XATOSI TUZATILGAN FUNKSIYA (send_ad_preview)
+# =====================================================================
 async def send_ad_preview(message: Message, state: FSMContext):
     data = await state.get_data()
+    
+    # Barcha matnlarni oldindan tayyorlaymiz (f-string ichida backslash ishlatmaslik uchun)
+    price_str = html_escape(str(data.get("price") or "0"))
+    currency_str = html_escape(str(data.get("currency") or "so'm")) # Backslash yo'q!
+    address_str = html_escape(str(data.get("address") or "—"))
+    phone_str = html_escape(str(data.get("phone") or "—"))
+    breed_str = html_escape(str(data.get("breed") or "—"))
+    age_str = html_escape(str(data.get("age") or "—"))
+    gender_str = html_escape(str(data.get("gender") or "—"))
+    health_str = html_escape(str(data.get("health") or "—"))
+    sterilization_str = html_escape(str(data.get("sterilization") or "—"))
+
     caption = Texts.PREVIEW_HEADER
-    caption += f"📍 Manzil: {html_escape(str(data.get('address') or '—'))}\n"
-    caption += f"📞 Tel: {html_escape(str(data.get('phone') or '—'))}\n"
+    caption += f"📍 Manzil: {address_str}\n"
+    caption += f"📞 Tel: {phone_str}\n"
     if data.get("ad_type") != "hadiya":
-        caption += f"💰 Narx: {html_escape(str(data.get('price') or '0'))} {html_escape(str(data.get('currency') or 'so\'m'))}\n"
+        caption += f"💰 Narx: {price_str} {currency_str}\n"
+    
     caption += (
-        f"🐱 Zot: {html_escape(str(data.get('breed') or '—'))}\n"
-        f"🎂 Yosh: {html_escape(str(data.get('age') or '—'))}\n"
-        f"👤 Jins: {html_escape(str(data.get('gender') or '—'))}\n"
-        f"❤️ Sog'liq: {html_escape(str(data.get('health') or '—'))}\n"
-        f"🧬 Nasl: {html_escape(str(data.get('sterilization') or '—'))}\n\n"
+        f"🐱 Zot: {breed_str}\n"
+        f"🎂 Yosh: {age_str}\n"
+        f"👤 Jins: {gender_str}\n"
+        f"❤️ Sog'liq: {health_str}\n"
+        f"🧬 Nasl: {sterilization_str}\n\n"
     )
+    
     photos = data.get("photos", [])
     if photos:
         await message.answer_photo(photo=photos[0], caption=caption, reply_markup=get_preview_kb())
@@ -799,6 +818,7 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     user = await db.get_user(user_id)
     price = data.get("bot_price", 0)
+    
     if price > 0:
         try:
             await db.update_user_balance(user_id, price, operation="subtract")
@@ -814,6 +834,7 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
         sterilization=data.get("sterilization"), address=data.get("address"),
         phone=data.get("phone"), price=data.get("price", "0"),
         currency=data.get("currency", "so'm"), ad_number=(user.get("ad_count") or 0) + 1,
+        cat_count=data.get("cat_count", 1), price_paid=price,
     )
 
     await safe_delete(call.message)
@@ -825,9 +846,11 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
 
     ad_type_upper = str(data.get("ad_type")).upper()
     breed_safe = html_escape(str(data.get("breed") or "—"))
+    username_safe = html_escape(user['username']) if user['username'] else '—'
+    
     admin_caption = (
         f"🆕 <b>YANGI REKLAMA!</b>\n\n"
-        f"👤 Foydalanuvchi: #{user['user_number']} ({html_escape(user['username']) if user['username'] else '—'})\n"
+        f"👤 Foydalanuvchi: #{user['user_number']} ({username_safe})\n"
         f"📋 Turi: {ad_type_upper}\n"
         f"🐱 Zot: {breed_safe}"
     )
@@ -915,8 +938,9 @@ async def admin_add_balance_user(message: Message, state: FSMContext):
         await message.answer("❌ Bunday ID li foydalanuvchi topilmadi.")
         return
     await state.update_data(target_user_id=uid)
+    username_safe = html_escape(user['username'] or '—')
     await message.answer(
-        f"👤 #{user['user_number']} ({html_escape(user['username'] or '—')})\n\n"
+        f"👤 #{user['user_number']} ({username_safe})\n\n"
         f"Summa kiriting (ayirish uchun <code>-50000</code>):"
     )
     await state.set_state(AdminStates.add_balance_amount)
@@ -1093,11 +1117,18 @@ async def process_decline_reason(message: Message, state: FSMContext):
     reason = message.text or "Sabab ko'rsatilmadi"
 
     async with db.pool.acquire() as conn:
-        ad_row = await conn.fetchrow("SELECT user_id FROM ads WHERE id = $1", ad_id)
+        ad_row = await conn.fetchrow("SELECT user_id, price_paid FROM ads WHERE id = $1", ad_id)
 
     await db.update_ad_status(ad_id, "rejected", reason=reason)
 
     if ad_row:
+        # Balansni qaytarish
+        if ad_row["price_paid"] and ad_row["price_paid"] > 0:
+            try:
+                await db.update_user_balance(ad_row["user_id"], ad_row["price_paid"], operation="add")
+            except Exception as e:
+                logger.error(f"Refund xatosi: {e}")
+
         try:
             await bot.send_message(
                 ad_row["user_id"],
