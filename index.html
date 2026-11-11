@@ -4,152 +4,459 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#0A0D14">
-    <title>UzbekCats | Premium</title>
+    <title>UzbekCats | Premium Web App</title>
+    
+    <!-- TELEGRAM WEB APP SCRIPT -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- FONTLAR -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- IKONKALAR -->
     <script src="https://unpkg.com/feather-icons"></script>
 
     <style>
-        /* =========================================================
-           GLOBAL VA PREMIUM DIZAYN (DARK/LIGHT)
-           ========================================================= */
-        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        /* ==========================================================================
+           1. GLOBAL O'ZGARUVCHILAR VA SOZLAMALAR
+           ========================================================================== */
+        *, *::before, *::after { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+            -webkit-tap-highlight-color: transparent; 
+        }
 
         :root {
-            --bg: #0A0D14; --bg-2: rgba(21, 26, 35, 0.85); --surface: #151A23; --surface-2: #1E2532;
+            /* Qorong'u rejim (Default) */
+            --bg: #0A0D14; 
+            --bg-2: rgba(21, 26, 35, 0.85); 
+            --surface: #151A23; 
+            --surface-2: #1E2532;
+            --surface-3: #2A3446;
             --border: rgba(255, 255, 255, 0.08);
-            --blue: #3B82F6; --blue-2: #2563EB; --cyan: #06B6D4;
-            --text: #FFFFFF; --text-2: #94A3B8; --text-3: #64748B;
-            --red: #EF4444; --green: #10B981; --amber: #F59E0B; --purple: #8B5CF6;
-            --shadow: 0 4px 16px rgba(0,0,0,0.3); --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
-            --radius: 20px; --radius-sm: 14px;
+            --border-hover: rgba(255, 255, 255, 0.15);
+            
+            /* Asosiy ranglar */
+            --blue: #3B82F6; 
+            --blue-2: #2563EB; 
+            --blue-glow: rgba(59, 130, 246, 0.4);
+            --cyan: #06B6D4;
+            
+            /* Matn ranglari */
+            --text: #FFFFFF; 
+            --text-2: #94A3B8; 
+            --text-3: #64748B;
+            
+            /* Holat ranglari */
+            --red: #EF4444; 
+            --red-glow: rgba(239, 68, 68, 0.2);
+            --green: #10B981; 
+            --green-glow: rgba(16, 185, 129, 0.2);
+            --amber: #F59E0B; 
+            --purple: #8B5CF6;
+            
+            /* Soyalar va Radiuslar */
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.2);
+            --shadow: 0 4px 16px rgba(0,0,0,0.3); 
+            --shadow-lg: 0 12px 40px rgba(0,0,0,0.5);
+            --radius: 20px; 
+            --radius-sm: 14px;
+            --radius-xs: 8px;
         }
 
         [data-theme="light"] {
-            --bg: #F5F7FB; --bg-2: rgba(255, 255, 255, 0.9); --surface: #FFFFFF; --surface-2: #F3F5FA;
+            /* Yorug' rejim */
+            --bg: #F5F7FB; 
+            --bg-2: rgba(255, 255, 255, 0.9); 
+            --surface: #FFFFFF; 
+            --surface-2: #F3F5FA;
+            --surface-3: #E2E8F0;
             --border: rgba(15, 23, 42, 0.08);
-            --text: #0F172A; --text-2: #475569; --text-3: #94A3B8;
-            --shadow: 0 4px 16px rgba(0,0,0,0.05); --shadow-lg: 0 12px 40px rgba(0,0,0,0.1);
+            --border-hover: rgba(15, 23, 42, 0.15);
+            
+            --text: #0F172A; 
+            --text-2: #475569; 
+            --text-3: #94A3B8;
+            
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
+            --shadow: 0 4px 16px rgba(0,0,0,0.05); 
+            --shadow-lg: 0 12px 40px rgba(0,0,0,0.1);
         }
 
         html, body {
-            width: 100%; height: 100%; font-family: 'Manrope', sans-serif;
-            background-color: #000; display: flex; justify-content: center; overflow: hidden;
+            width: 100%; 
+            height: 100%; 
+            font-family: 'Manrope', sans-serif;
+            background-color: #000; 
+            display: flex; 
+            justify-content: center; 
+            overflow: hidden;
         }
 
+        /* ==========================================================================
+           2. ASOSIY KONTEYNER VA ANIMATSIYALAR
+           ========================================================================== */
         #app-frame {
-            width: 100%; max-width: 480px; height: 100%; background: var(--bg); color: var(--text);
-            position: relative; display: flex; flex-direction: column; overflow: hidden;
-            box-shadow: 0 0 50px rgba(0,0,0,0.5); transition: background .3s, color .3s;
+            width: 100%; 
+            max-width: 480px; 
+            height: 100%; 
+            background: var(--bg); 
+            color: var(--text);
+            position: relative; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5); 
+            transition: background .3s, color .3s;
             padding-bottom: calc(80px + env(safe-area-inset-bottom, 0));
         }
 
-        button, input, textarea { font-family: inherit; font-size: inherit; color: inherit; outline: none; border: none; background: none; }
+        button, input, textarea, select { 
+            font-family: inherit; 
+            font-size: inherit; 
+            color: inherit; 
+            outline: none; 
+            border: none; 
+            background: none; 
+            appearance: none;
+        }
         button { cursor: pointer; }
         img { display: block; max-width: 100%; }
         .hidden { display: none !important; }
+        .text-center { text-align: center; }
+        .text-red { color: var(--red); }
+        .text-green { color: var(--green); }
+        .text-blue { color: var(--blue); }
 
         /* Animatsiyalar */
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes float { 0% { transform: translateY(0); } 50% { transform: translateY(-5px); } 100% { transform: translateY(0); } }
-        @keyframes rotateSun { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-        @keyframes moonAnim { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
+        @keyframes slideUp { 
+            from { transform: translateY(100%); } 
+            to { transform: translateY(0); } 
+        }
+        @keyframes spin { 
+            to { transform: rotate(360deg); } 
+        }
+        @keyframes float { 
+            0% { transform: translateY(0); } 
+            50% { transform: translateY(-5px); } 
+            100% { transform: translateY(0); } 
+        }
+        @keyframes rotateSun { 
+            from { transform: rotate(0); } 
+            to { transform: rotate(360deg); } 
+        }
+        @keyframes moonAnim { 
+            0% { transform: scale(1); } 
+            50% { transform: scale(1.1); } 
+            100% { transform: scale(1); } 
+        }
+        @keyframes pulseBg {
+            0% { background-color: var(--surface-2); }
+            50% { background-color: var(--surface-3); }
+            100% { background-color: var(--surface-2); }
+        }
 
-        .page { display: none; flex: 1; overflow-y: auto; padding: 16px; }
-        .page.active { display: block; animation: fadeIn 0.4s ease; }
+        /* Skeleton Loader */
+        .skeleton {
+            animation: pulseBg 1.5s infinite ease-in-out;
+            border-radius: var(--radius-xs);
+        }
+        .skeleton-text { height: 16px; margin-bottom: 8px; width: 100%; }
+        .skeleton-title { height: 24px; margin-bottom: 12px; width: 70%; }
+        .skeleton-img { width: 100%; aspect-ratio: 1/1; border-radius: var(--radius-sm); }
+
+        /* ==========================================================================
+           3. SAHIFALAR VA HEADER
+           ========================================================================== */
+        .page { 
+            display: none; 
+            flex: 1; 
+            overflow-y: auto; 
+            padding: 16px; 
+            padding-bottom: 40px;
+        }
+        .page.active { 
+            display: block; 
+            animation: fadeIn 0.4s ease; 
+        }
         .page::-webkit-scrollbar { display: none; }
 
-        /* =========================================================
-           HEADER
-           ========================================================= */
         .header {
-            padding: 16px; display: flex; justify-content: space-between; align-items: center;
-            background: var(--bg-2); backdrop-filter: blur(20px); border-bottom: 1px solid var(--border);
-            position: sticky; top: 0; z-index: 100;
+            padding: 16px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            background: var(--bg-2); 
+            backdrop-filter: blur(20px); 
+            border-bottom: 1px solid var(--border);
+            position: sticky; 
+            top: 0; 
+            z-index: 100;
         }
         .user-info { display: flex; align-items: center; gap: 12px; }
+        
         .avatar {
-            width: 46px; height: 46px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), var(--cyan));
-            display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 18px;
-            overflow: hidden; border: 2px solid var(--surface); box-shadow: var(--shadow);
+            width: 46px; 
+            height: 46px; 
+            border-radius: 50%; 
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            color: #fff; 
+            font-weight: 800; 
+            font-size: 18px;
+            overflow: hidden; 
+            border: 2px solid var(--surface); 
+            box-shadow: var(--shadow);
         }
         .avatar img { width: 100%; height: 100%; object-fit: cover; }
+        
         .user-text { display: flex; flex-direction: column; }
-        .greeting { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-3); text-transform: uppercase; }
-        .name { font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+        .greeting { 
+            font-size: 10px; 
+            font-weight: 700; 
+            letter-spacing: 1px; 
+            color: var(--text-3); 
+            text-transform: uppercase; 
+        }
+        .name { 
+            font-family: 'Space Grotesk', sans-serif; 
+            font-size: 16px; 
+            font-weight: 800; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            max-width: 150px; 
+        }
         
         .theme-btn { 
-            width: 42px; height: 42px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); 
-            display: flex; align-items: center; justify-content: center; color: var(--text-2); transition: 0.3s;
+            width: 42px; 
+            height: 42px; 
+            border-radius: 14px; 
+            background: var(--surface); 
+            border: 1px solid var(--border); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            color: var(--text-2); 
+            transition: 0.3s;
         }
         .theme-btn:hover { background: var(--surface-2); }
         .theme-btn i { width: 20px; height: 20px; }
         [data-theme="light"] .theme-btn i.feather-moon { animation: moonAnim 2s infinite ease-in-out; }
         [data-theme="dark"] .theme-btn i.feather-sun { animation: rotateSun 10s infinite linear; }
 
-        /* =========================================================
-           DASHBOARD
-           ========================================================= */
+        /* ==========================================================================
+           4. DASHBOARD (ASOSIY SAHIFA)
+           ========================================================================== */
         .balance-card {
-            display: flex; align-items: center; gap: 14px; padding: 18px;
+            display: flex; 
+            align-items: center; 
+            gap: 14px; 
+            padding: 18px;
             background: linear-gradient(135deg, rgba(59,130,246,.15), rgba(6,182,212,.05));
-            border: 1px solid rgba(59,130,246,0.2); border-radius: var(--radius); margin-bottom: 20px;
+            border: 1px solid rgba(59,130,246,0.2); 
+            border-radius: var(--radius); 
+            margin-bottom: 20px;
             box-shadow: var(--shadow);
         }
-        .bal-icon { width: 46px; height: 46px; border-radius: 14px; background: var(--blue); color: #fff; display: flex; align-items: center; justify-content: center; }
+        .bal-icon { 
+            width: 46px; 
+            height: 46px; 
+            border-radius: 14px; 
+            background: var(--blue); 
+            color: #fff; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
         .bal-info { flex: 1; }
-        .bal-label { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
-        .bal-val { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 800; margin-top: 2px; }
-        .btn-topup { padding: 10px 16px; border-radius: 12px; background: var(--blue); color: #fff; font-weight: 700; font-size: 13px; box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+        .bal-label { 
+            font-size: 11px; 
+            font-weight: 700; 
+            color: var(--text-3); 
+            text-transform: uppercase; 
+            letter-spacing: 0.5px; 
+        }
+        .bal-val { 
+            font-family: 'Space Grotesk', sans-serif; 
+            font-size: 22px; 
+            font-weight: 800; 
+            margin-top: 2px; 
+        }
+        .btn-topup { 
+            padding: 10px 16px; 
+            border-radius: 12px; 
+            background: var(--blue); 
+            color: #fff; 
+            font-weight: 700; 
+            font-size: 13px; 
+            box-shadow: 0 4px 12px rgba(59,130,246,0.3); 
+        }
 
-        .tabs { display: flex; gap: 10px; overflow-x: auto; margin-bottom: 20px; scrollbar-width: none; padding-bottom: 4px; }
+        .tabs { 
+            display: flex; 
+            gap: 10px; 
+            overflow-x: auto; 
+            margin-bottom: 20px; 
+            scrollbar-width: none; 
+            padding-bottom: 4px; 
+        }
         .tabs::-webkit-scrollbar { display: none; }
         .tab { 
-            padding: 10px 20px; border-radius: 24px; background: var(--surface); border: 1px solid var(--border); 
-            color: var(--text-3); font-size: 13px; font-weight: 700; white-space: nowrap; display: flex; align-items: center; gap: 6px;
+            padding: 10px 20px; 
+            border-radius: 24px; 
+            background: var(--surface); 
+            border: 1px solid var(--border); 
+            color: var(--text-3); 
+            font-size: 13px; 
+            font-weight: 700; 
+            white-space: nowrap; 
+            display: flex; 
+            align-items: center; 
+            gap: 6px;
             transition: 0.2s;
         }
         .tab i { width: 16px; height: 16px; }
-        .tab.active { background: var(--blue); color: #fff; border-color: var(--blue); box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+        .tab.active { 
+            background: var(--blue); 
+            color: #fff; 
+            border-color: var(--blue); 
+            box-shadow: 0 4px 12px rgba(59,130,246,0.3); 
+        }
 
-        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+        .grid-2 { 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 14px; 
+        }
         .card {
-            background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
-            overflow: hidden; box-shadow: var(--shadow); transition: transform 0.2s;
+            background: var(--surface); 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius-sm);
+            overflow: hidden; 
+            box-shadow: var(--shadow); 
+            transition: transform 0.2s, box-shadow 0.2s;
         }
         .card:active { transform: scale(0.98); }
-        .card-img { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: var(--surface-2); }
+        .card-img { 
+            width: 100%; 
+            aspect-ratio: 1/1; 
+            object-fit: cover; 
+            background: var(--surface-2); 
+        }
         .card-body { padding: 12px; }
-        .card-title { font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .card-meta { font-size: 12px; color: var(--text-3); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
-        .card-price { font-size: 15px; font-weight: 800; color: var(--blue); margin-top: 8px; }
+        .card-title { 
+            font-size: 14px; 
+            font-weight: 800; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+        }
+        .card-meta { 
+            font-size: 12px; 
+            color: var(--text-3); 
+            margin-top: 6px; 
+            display: flex; 
+            align-items: center; 
+            gap: 4px; 
+        }
+        .card-price { 
+            font-size: 15px; 
+            font-weight: 800; 
+            color: var(--blue); 
+            margin-top: 8px; 
+        }
 
-        /* =========================================================
-           REYTING (PODIUM)
-           ========================================================= */
-        .podium-container { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin-bottom: 30px; padding: 30px 10px 0; background: linear-gradient(180deg, var(--surface) 0%, transparent 100%); border-radius: var(--radius); border: 1px solid var(--border); }
-        .podium-item { display: flex; flex-direction: column; align-items: center; position: relative; width: 90px; }
-        .podium-avatar { width: 60px; height: 60px; border-radius: 50%; border: 3px solid #fff; object-fit: cover; background: var(--surface); margin-bottom: 10px; box-shadow: var(--shadow); }
+        /* ==========================================================================
+           5. REYTING (TOP 50)
+           ========================================================================== */
+        .podium-container { 
+            display: flex; 
+            justify-content: center; 
+            align-items: flex-end; 
+            gap: 10px; 
+            margin-bottom: 30px; 
+            padding: 30px 10px 0; 
+            background: linear-gradient(180deg, var(--surface) 0%, transparent 100%); 
+            border-radius: var(--radius); 
+            border: 1px solid var(--border); 
+        }
+        .podium-item { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            position: relative; 
+            width: 90px; 
+        }
+        .podium-avatar { 
+            width: 60px; 
+            height: 60px; 
+            border-radius: 50%; 
+            border: 3px solid #fff; 
+            object-fit: cover; 
+            background: var(--surface); 
+            margin-bottom: 10px; 
+            box-shadow: var(--shadow); 
+        }
         .podium-1 .podium-avatar { width: 80px; height: 80px; border-color: #FFD700; }
         .podium-1 .crown { position: absolute; top: -30px; font-size: 30px; animation: float 2s infinite ease-in-out; }
-        .podium-name { font-size: 13px; font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+        .podium-name { 
+            font-size: 13px; 
+            font-weight: 800; 
+            text-align: center; 
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            width: 100%; 
+        }
         .podium-score { font-size: 12px; color: var(--blue); font-weight: 800; margin-top: 4px; }
-        .podium-block { width: 100%; background: var(--surface-2); border-radius: 12px 12px 0 0; margin-top: 12px; display: flex; justify-content: center; padding-top: 12px; font-weight: 800; font-size: 18px; color: var(--text-3); }
+        .podium-block { 
+            width: 100%; 
+            background: var(--surface-2); 
+            border-radius: 12px 12px 0 0; 
+            margin-top: 12px; 
+            display: flex; 
+            justify-content: center; 
+            padding-top: 12px; 
+            font-weight: 800; 
+            font-size: 18px; 
+            color: var(--text-3); 
+        }
         .podium-1 .podium-block { height: 80px; background: linear-gradient(180deg, rgba(255,215,0,.15), var(--surface)); color: #FFD700; }
         .podium-2 .podium-block { height: 60px; background: linear-gradient(180deg, rgba(192,192,192,.15), var(--surface)); color: #C0C0C0; }
         .podium-3 .podium-block { height: 50px; background: linear-gradient(180deg, rgba(205,127,50,.15), var(--surface)); color: #CD7F32; }
 
-        /* =========================================================
-           PROFIL
-           ========================================================= */
+        /* ==========================================================================
+           6. PROFIL VA SOZLAMALAR
+           ========================================================================== */
         .premium-card {
-            background: linear-gradient(135deg, var(--blue), var(--blue-2)); border-radius: var(--radius); padding: 24px;
-            color: #fff; position: relative; overflow: hidden; margin-bottom: 20px; box-shadow: var(--shadow-lg);
+            background: linear-gradient(135deg, var(--blue), var(--blue-2)); 
+            border-radius: var(--radius); 
+            padding: 24px;
+            color: #fff; 
+            position: relative; 
+            overflow: hidden; 
+            margin-bottom: 20px; 
+            box-shadow: var(--shadow-lg);
         }
-        .premium-card::before { content: 'PREMIUM'; position: absolute; top: 20px; right: 20px; font-size: 11px; font-weight: 800; letter-spacing: 2px; opacity: 0.4; }
+        .premium-card::before { 
+            content: 'PREMIUM'; 
+            position: absolute; 
+            top: 20px; 
+            right: 20px; 
+            font-size: 11px; 
+            font-weight: 800; 
+            letter-spacing: 2px; 
+            opacity: 0.4; 
+        }
         .prof-name { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 800; margin-top: 24px; }
         .prof-id { font-size: 14px; opacity: 0.8; margin-top: 6px; }
         .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px; }
@@ -165,51 +472,152 @@
         .menu-text { flex: 1; font-weight: 700; font-size: 15px; }
         .menu-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 
-        /* =========================================================
-           INPUT VA TUGMALAR
-           ========================================================= */
+        /* ==========================================================================
+           7. INPUT VA TUGMALAR
+           ========================================================================== */
         .input-group { margin-bottom: 16px; }
         .label { display: block; font-size: 13px; font-weight: 700; color: var(--text-2); margin-bottom: 8px; }
-        .input { width: 100%; padding: 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); font-size: 15px; font-weight: 600; color: var(--text); transition: 0.2s; }
+        .input { 
+            width: 100%; 
+            padding: 16px; 
+            border-radius: 14px; 
+            background: var(--surface); 
+            border: 1px solid var(--border); 
+            font-size: 15px; 
+            font-weight: 600; 
+            color: var(--text); 
+            transition: 0.2s; 
+        }
         .input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
-        .btn { width: 100%; padding: 16px; border-radius: 14px; font-weight: 800; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
+        .btn { 
+            width: 100%; 
+            padding: 16px; 
+            border-radius: 14px; 
+            font-weight: 800; 
+            font-size: 15px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            gap: 8px; 
+            transition: 0.2s; 
+        }
         .btn:active { transform: scale(0.98); }
         .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 4px 16px rgba(59,130,246,0.3); }
         .btn-outline { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+        .btn-outline:active { background: var(--surface-2); }
         .btn-danger { background: var(--red); color: #fff; }
+        .btn-success { background: var(--green); color: #fff; }
 
-        /* =========================================================
-           PASTKI NAVIGATSIYA
-           ========================================================= */
+        /* ==========================================================================
+           8. NAVIGATSIYA
+           ========================================================================== */
         .nav {
-            position: absolute; bottom: 0; left: 0; right: 0; width: 100%;
-            background: var(--bg-2); backdrop-filter: blur(20px); border-top: 1px solid var(--border);
-            display: flex; justify-content: space-around; align-items: center; padding: 10px 0;
-            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0)); z-index: 100;
+            position: absolute; 
+            bottom: 0; 
+            left: 0; 
+            right: 0; 
+            width: 100%;
+            background: var(--bg-2); 
+            backdrop-filter: blur(20px); 
+            border-top: 1px solid var(--border);
+            display: flex; 
+            justify-content: space-around; 
+            align-items: center; 
+            padding: 10px 0;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0)); 
+            z-index: 100;
         }
-        .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-3); font-size: 10px; font-weight: 700; width: 64px; transition: 0.2s; }
+        .nav-item { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            gap: 4px; 
+            color: var(--text-3); 
+            font-size: 10px; 
+            font-weight: 700; 
+            width: 64px; 
+            transition: 0.2s; 
+        }
         .nav-item.active { color: var(--blue); }
         .nav-icon { width: 24px; height: 24px; }
         .nav-icon svg { width: 100%; height: 100%; }
         .nav-fab {
-            width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--blue), var(--cyan));
-            display: flex; align-items: center; justify-content: center; color: #fff;
-            transform: translateY(-20px); box-shadow: 0 8px 24px rgba(59,130,246,0.4); border: 5px solid var(--bg);
+            width: 56px; 
+            height: 56px; 
+            border-radius: 50%; 
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            color: #fff;
+            transform: translateY(-20px); 
+            box-shadow: 0 8px 24px rgba(59,130,246,0.4); 
+            border: 5px solid var(--bg);
             transition: 0.2s;
         }
         .nav-fab:active { transform: translateY(-20px) scale(0.9); }
 
-        /* =========================================================
-           MODALLAR VA PREMIUM SAHIFALAR
-           ========================================================= */
-        .overlay { position: absolute; inset: 0; background: rgba(0,0,0,.8); backdrop-filter: blur(8px); z-index: 900; display: none; align-items: flex-end; justify-content: center; }
+        /* ==========================================================================
+           9. MODALLAR VA WIZARD
+           ========================================================================== */
+        .overlay { 
+            position: absolute; 
+            inset: 0; 
+            background: rgba(0,0,0,.8); 
+            backdrop-filter: blur(8px); 
+            z-index: 900; 
+            display: none; 
+            align-items: flex-end; 
+            justify-content: center; 
+        }
         .overlay.active { display: flex; }
-        .modal-content { width: 100%; background: var(--bg); border-radius: 28px 28px 0 0; padding: 24px; animation: slideUp 0.3s ease; max-height: 90%; overflow-y: auto; box-shadow: 0 -10px 40px rgba(0,0,0,0.5); }
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .modal-content { 
+            width: 100%; 
+            background: var(--bg); 
+            border-radius: 28px 28px 0 0; 
+            padding: 24px; 
+            animation: slideUp 0.3s ease; 
+            max-height: 90%; 
+            overflow-y: auto; 
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.5); 
+        }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
         .modal-title { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 800; }
 
-        /* TOPUP PREMIUM SAHIFA */
+        /* WIZARD (Reklama berish) */
+        .progress-bar { width: 100%; height: 6px; background: var(--surface-2); border-radius: 3px; margin-bottom: 24px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--blue); border-radius: 3px; transition: width 0.3s ease; width: 0%; }
+        .wizard-step { display: none; animation: fadeIn 0.3s ease; }
+        .wizard-step.active { display: block; }
+
+        .tariff-card { 
+            padding: 20px; 
+            border-radius: 16px; 
+            background: var(--surface); 
+            border: 2px solid var(--border); 
+            margin-bottom: 12px; 
+            position: relative; 
+            transition: 0.2s; 
+            cursor: pointer; 
+        }
+        .tariff-card.selected { border-color: var(--blue); background: rgba(59,130,246,0.05); }
+        .tariff-price { font-size: 24px; font-weight: 800; color: var(--blue); font-family: 'Space Grotesk'; }
+        .tariff-features { list-style: none; margin-top: 12px; font-size: 13px; color: var(--text-2); }
+        .tariff-features li { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+        .tariff-features i { color: var(--green); width: 14px; }
+
+        .file-upload { 
+            border: 2px dashed var(--border); 
+            border-radius: 16px; 
+            padding: 30px; 
+            text-align: center; 
+            color: var(--text-3); 
+            cursor: pointer; 
+            transition: 0.2s; 
+        }
+        .file-upload:active { background: var(--surface-2); }
+
+        /* TOPUP PREMIUM */
         .topup-amount-box { text-align: center; margin: 20px 0; position: relative; }
         .topup-amount-box input { width: 100%; text-align: center; font-size: 40px; font-weight: 800; font-family: 'Space Grotesk'; background: transparent; border: none; color: var(--text); }
         .topup-amount-box .currency { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); font-size: 16px; font-weight: 700; color: var(--text-3); }
@@ -217,34 +625,38 @@
         .qa-btn { padding: 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); font-weight: 700; font-size: 14px; transition: 0.2s; }
         .qa-btn.active { background: rgba(59,130,246,0.1); border-color: var(--blue); color: var(--blue); }
         .timer-badge { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 12px; background: rgba(16,185,129,0.1); color: var(--green); font-weight: 700; font-size: 14px; margin-bottom: 20px; }
-        
-        /* CREATE AD WIZARD */
-        .progress-bar { width: 100%; height: 6px; background: var(--surface-2); border-radius: 3px; margin-bottom: 24px; overflow: hidden; }
-        .progress-fill { height: 100%; background: var(--blue); border-radius: 3px; transition: width 0.3s ease; width: 0%; }
-        .wizard-step { display: none; animation: fadeIn 0.3s ease; }
-        .wizard-step.active { display: block; }
-        .tariff-card { padding: 20px; border-radius: 16px; background: var(--surface); border: 2px solid var(--border); margin-bottom: 12px; position: relative; transition: 0.2s; cursor: pointer; }
-        .tariff-card.selected { border-color: var(--blue); background: rgba(59,130,246,0.05); }
-        .tariff-price { font-size: 24px; font-weight: 800; color: var(--blue); font-family: 'Space Grotesk'; }
-        .tariff-features { list-style: none; margin-top: 12px; font-size: 13px; color: var(--text-2); }
-        .tariff-features li { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-        .tariff-features i { color: var(--green); width: 14px; }
-        
-        .cat-form-box { background: var(--surface); border-radius: 16px; padding: 20px; border: 1px solid var(--border); margin-bottom: 16px; }
-        .file-upload { border: 2px dashed var(--border); border-radius: 16px; padding: 30px; text-align: center; color: var(--text-3); cursor: pointer; transition: 0.2s; }
-        .file-upload:active { background: var(--surface-2); }
 
+        /* ADMIN PANEL */
+        .admin-stat-card { background: var(--surface); border-radius: var(--radius-sm); padding: 16px; border: 1px solid var(--border); text-align: center; }
+        .admin-stat-val { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+        .admin-stat-lbl { font-size: 11px; color: var(--text-3); text-transform: uppercase; font-weight: 700; }
+        
+        .admin-list-item { 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            padding: 12px; 
+            background: var(--surface); 
+            border-radius: var(--radius-sm); 
+            border: 1px solid var(--border); 
+            margin-bottom: 8px;
+        }
+        .admin-list-img { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: var(--surface-2); }
+
+        /* UTIL */
+        .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: var(--blue); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
         #toast { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 12px 24px; border-radius: 30px; font-size: 14px; font-weight: 800; z-index: 2000; opacity: 0; transition: 0.3s; pointer-events: none; box-shadow: var(--shadow-lg); }
         #toast.show { opacity: 1; }
-        
-        /* Spinner */
-        .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: var(--blue); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
     </style>
 </head>
 <body>
 
+    <!-- ASOSIY KONTEYNER -->
     <div id="app-frame">
-        <!-- HEADER -->
+        
+        <!-- =====================================================================
+             HEADER
+             ===================================================================== -->
         <header class="header">
             <div class="user-info">
                 <div class="avatar" id="h-avatar">U</div>
@@ -253,12 +665,14 @@
                     <span class="name" id="h-name">Yuklanmoqda...</span>
                 </div>
             </div>
-            <button class="theme-btn" onclick="UI.toggleTheme()">
+            <button class="theme-btn" id="btn-theme" onclick="UI.toggleTheme()">
                 <i data-feather="moon"></i>
             </button>
         </header>
 
-        <!-- PAGE: DASHBOARD -->
+        <!-- =====================================================================
+             PAGE: DASHBOARD (ASOSIY SAHIFA)
+             ===================================================================== -->
         <div class="page active" id="p-dashboard">
             <div class="balance-card">
                 <div class="bal-icon"><i data-feather="credit-card"></i></div>
@@ -271,46 +685,69 @@
 
             <div class="tabs">
                 <button class="tab active" onclick="Dashboard.setFilter('all', this)"><i data-feather="grid"></i> Hammasi</button>
-                <button class="tab" onclick="Dashboard.setFilter('new', this)"><i data-feather="clock"></i> Yangi</button>
+                <button class="tab" onclick="Dashboard.setFilter('new', this)"><i data-feather="clock"></i> Yangi (24 soat)</button>
                 <button class="tab" onclick="Dashboard.setFilter('cheap', this)"><i data-feather="trending-down"></i> Arzon</button>
+                <button class="tab" onclick="Dashboard.setFilter('expensive', this)"><i data-feather="trending-up"></i> Qimmat</button>
             </div>
 
+            <!-- Skeleton Loader -->
             <div class="grid-2" id="ads-grid">
-                <div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-3);">Yuklanmoqda...</div>
+                <div>
+                    <div class="skeleton skeleton-img" style="margin-bottom: 8px;"></div>
+                    <div class="skeleton skeleton-text"></div>
+                    <div class="skeleton skeleton-text" style="width: 50%;"></div>
+                </div>
+                <div>
+                    <div class="skeleton skeleton-img" style="margin-bottom: 8px;"></div>
+                    <div class="skeleton skeleton-text"></div>
+                    <div class="skeleton skeleton-text" style="width: 50%;"></div>
+                </div>
             </div>
         </div>
 
-        <!-- PAGE: RATING -->
+        <!-- =====================================================================
+             PAGE: REYTING (TOP 50)
+             ===================================================================== -->
         <div class="page" id="p-rating">
             <h2 style="font-family: 'Space Grotesk'; font-size: 24px; font-weight: 800; margin-bottom: 20px;">Konkurs Reytingi</h2>
-            <div class="podium-container" id="rating-podium"></div>
-            <div class="grid-2" id="rating-list" style="grid-template-columns: 1fr;"></div>
+            <div class="podium-container" id="rating-podium">
+                <div style="text-align: center; color: var(--text-3); width: 100%;">Yuklanmoqda...</div>
+            </div>
+            <div class="grid-2" id="rating-list" style="grid-template-columns: 1fr;">
+                <!-- Skeleton -->
+                <div class="skeleton" style="height: 60px; margin-bottom: 8px;"></div>
+                <div class="skeleton" style="height: 60px; margin-bottom: 8px;"></div>
+            </div>
         </div>
 
-        <!-- PAGE: TOPUP (Alohida sahifa) -->
+        <!-- =====================================================================
+             PAGE: TOPUP (HISOB TO'LDIRISH)
+             ===================================================================== -->
         <div class="page" id="p-topup">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
                 <button onclick="UI.showPage('p-dashboard')" style="width: 40px; height: 40px; border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: center;"><i data-feather="arrow-left"></i></button>
                 <h2 style="font-family: 'Space Grotesk'; font-size: 20px; font-weight: 800;">Hisobni to'ldirish</h2>
             </div>
             
-            <div class="input-group">
-                <div class="topup-amount-box">
-                    <input type="number" id="topup-amount" placeholder="0" oninput="Topup.updateAmounts(this.value)">
-                    <span class="currency">so'm</span>
+            <div id="topup-initial">
+                <div class="input-group">
+                    <div class="topup-amount-box">
+                        <input type="number" id="topup-amount" placeholder="0" oninput="Topup.updateAmounts(this.value)">
+                        <span class="currency">so'm</span>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="quick-amounts">
-                <button class="qa-btn" onclick="Topup.setAmount(5000, this)">5 000</button>
-                <button class="qa-btn" onclick="Topup.setAmount(10000, this)">10 000</button>
-                <button class="qa-btn" onclick="Topup.setAmount(25000, this)">25 000</button>
-                <button class="qa-btn" onclick="Topup.setAmount(50000, this)">50 000</button>
-                <button class="qa-btn" onclick="Topup.setAmount(100000, this)">100 000</button>
-                <button class="qa-btn" onclick="Topup.setAmount(500000, this)">500 000</button>
-            </div>
+                
+                <div class="quick-amounts">
+                    <button class="qa-btn" onclick="Topup.setAmount(5000, this)">5 000</button>
+                    <button class="qa-btn" onclick="Topup.setAmount(10000, this)">10 000</button>
+                    <button class="qa-btn" onclick="Topup.setAmount(25000, this)">25 000</button>
+                    <button class="qa-btn" onclick="Topup.setAmount(50000, this)">50 000</button>
+                    <button class="qa-btn" onclick="Topup.setAmount(100000, this)">100 000</button>
+                    <button class="qa-btn" onclick="Topup.setAmount(500000, this)">500 000</button>
+                </div>
 
-            <button class="btn btn-primary" onclick="Topup.start()">Davom etish</button>
+                <button class="btn btn-primary" id="btn-topup-start" onclick="Topup.start()">Davom etish</button>
+            </div>
 
             <!-- To'lov ma'lumotlari (yashirin) -->
             <div id="topup-info" class="hidden" style="margin-top: 24px;">
@@ -336,7 +773,9 @@
             </div>
         </div>
 
-        <!-- PAGE: CREATE AD (Wizard) -->
+        <!-- =====================================================================
+             PAGE: CREATE AD (REKLAMA BERISH WIZARD)
+             ===================================================================== -->
         <div class="page" id="p-create">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
                 <button onclick="UI.showPage('p-dashboard')" style="width: 40px; height: 40px; border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: center;"><i data-feather="arrow-left"></i></button>
@@ -379,7 +818,7 @@
             <!-- Step 4: Cat Details (Dynamic) -->
             <div class="wizard-step" id="w-step-4">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;" id="cat-detail-title">1-mushuk ma'lumotlari</h3>
-                <div class="cat-form-box">
+                <div class="card" style="padding: 20px; margin-bottom: 16px;">
                     <div class="input-group">
                         <label class="label">Zoti</label>
                         <select class="input" id="c-breed">
@@ -454,7 +893,7 @@
                 <div class="input-group">
                     <label class="label">Valyuta</label>
                     <div style="display: flex; gap: 10px;">
-                        <button class="btn btn-outline" id="btn-uzs" onclick="CreateAd.setCurrency('so\\'m', this)">So'm</button>
+                        <button class="btn btn-outline" id="btn-uzs" onclick="CreateAd.setCurrency('so\'m', this)">So'm</button>
                         <button class="btn btn-outline" id="btn-usd" onclick="CreateAd.setCurrency('$', this)">Dollar ($)</button>
                     </div>
                 </div>
@@ -475,15 +914,21 @@
             </div>
         </div>
 
-        <!-- PAGE: MY ADS -->
+        <!-- =====================================================================
+             PAGE: MY ADS (MENING E'LONLARIM)
+             ===================================================================== -->
         <div class="page" id="p-myads">
             <h2 style="font-family: 'Space Grotesk'; font-size: 24px; font-weight: 800; margin-bottom: 20px;">Mening e'lonlarim</h2>
             <div id="myads-list" style="display: flex; flex-direction: column; gap: 12px;">
-                <p style="color: var(--text-3); text-align: center;">Yuklanmoqda...</p>
+                <!-- Skeleton -->
+                <div class="skeleton" style="height: 80px;"></div>
+                <div class="skeleton" style="height: 80px;"></div>
             </div>
         </div>
 
-        <!-- PAGE: PROFILE -->
+        <!-- =====================================================================
+             PAGE: PROFILE (PROFIL)
+             ===================================================================== -->
         <div class="page" id="p-profile">
             <div class="premium-card">
                 <div class="prof-name" id="prof-name">Yuklanmoqda...</div>
@@ -519,35 +964,40 @@
             </div>
         </div>
 
-        <!-- PAGE: ADMIN PANEL (Premium) -->
+        <!-- =====================================================================
+             PAGE: ADMIN PANEL (PREMIUM)
+             ===================================================================== -->
         <div class="page" id="p-admin">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
                 <button onclick="UI.showPage('p-profile')" style="width: 40px; height: 40px; border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: center;"><i data-feather="arrow-left"></i></button>
                 <h2 style="font-family: 'Space Grotesk'; font-size: 20px; font-weight: 800;">Admin Panel</h2>
             </div>
 
+            <!-- Stat Cards -->
             <div class="grid-2" style="margin-bottom: 20px;">
-                <div class="card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 22px; font-weight: 800; color: var(--blue);" id="stat-total-ads">0</div>
-                    <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Jami e'lonlar</div>
+                <div class="admin-stat-card">
+                    <div class="admin-stat-val" style="color: var(--blue);" id="stat-total-ads">0</div>
+                    <div class="admin-stat-lbl">Jami e'lonlar</div>
                 </div>
-                <div class="card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 22px; font-weight: 800; color: var(--green);" id="stat-total-users">0</div>
-                    <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Foydalanuvchi</div>
+                <div class="admin-stat-card">
+                    <div class="admin-stat-val" style="color: var(--green);" id="stat-total-users">0</div>
+                    <div class="admin-stat-lbl">Foydalanuvchi</div>
                 </div>
-                <div class="card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 22px; font-weight: 800; color: var(--amber);" id="stat-pending">0</div>
-                    <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Kutilmoqda</div>
+                <div class="admin-stat-card">
+                    <div class="admin-stat-val" style="color: var(--amber);" id="stat-pending">0</div>
+                    <div class="admin-stat-lbl">Kutilmoqda</div>
                 </div>
-                <div class="card" style="padding: 16px; text-align: center;">
-                    <div style="font-size: 22px; font-weight: 800; color: var(--purple);" id="stat-cards">0</div>
-                    <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Kartalar</div>
+                <div class="admin-stat-card">
+                    <div class="admin-stat-val" style="color: var(--purple);" id="stat-cards">0</div>
+                    <div class="admin-stat-lbl">Kartalar</div>
                 </div>
             </div>
 
-            <div class="tabs" style="margin-bottom: 16px;">
+            <!-- Admin Tabs -->
+            <div class="tabs" style="margin-bottom: 16px; overflow-x: scroll;">
                 <button class="tab active" onclick="Admin.setTab('stats', this)"><i data-feather="bar-chart"></i> Statistika</button>
                 <button class="tab" onclick="Admin.setTab('ads', this)"><i data-feather="layers"></i> E'lonlar</button>
+                <button class="tab" onclick="Admin.setTab('users', this)"><i data-feather="users"></i> Foydalanuvchilar</button>
                 <button class="tab" onclick="Admin.setTab('cards', this)"><i data-feather="credit-card"></i> Kartalar</button>
             </div>
 
@@ -575,7 +1025,16 @@
 
             <!-- Admin: Ads -->
             <div id="admin-tab-ads" class="hidden">
-                <div id="admin-ads-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                <div id="admin-ads-list" style="display: flex; flex-direction: column; gap: 10px;">
+                    <div class="skeleton" style="height: 60px;"></div>
+                </div>
+            </div>
+
+            <!-- Admin: Users -->
+            <div id="admin-tab-users" class="hidden">
+                <div id="admin-users-list" style="display: flex; flex-direction: column; gap: 10px;">
+                    <div class="skeleton" style="height: 60px;"></div>
+                </div>
             </div>
 
             <!-- Admin: Cards -->
@@ -591,10 +1050,13 @@
                     </div>
                     <button class="btn btn-primary" onclick="Admin.saveCard()">Saqlash</button>
                 </div>
+                <div id="admin-cards-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
             </div>
         </div>
 
-        <!-- NAV -->
+        <!-- =====================================================================
+             NAVIGATSIYA
+             ===================================================================== -->
         <nav class="nav">
             <button class="nav-item active" onclick="UI.showPage('p-dashboard', this)">
                 <div class="nav-icon"><i data-feather="home"></i></div><span>Asosiy</span>
@@ -602,7 +1064,7 @@
             <button class="nav-item" onclick="UI.showPage('p-rating', this)">
                 <div class="nav-icon"><i data-feather="bar-chart-2"></i></div><span>Reyting</span>
             </button>
-            <div class="nav-fab" onclick="UI.showPage('p-create')">
+            <div class="nav-fab" onclick="CreateAd.reset()">
                 <i data-feather="plus" style="width: 28px; height: 28px;"></i>
             </div>
             <button class="nav-item" onclick="UI.showPage('p-myads', this)">
@@ -614,72 +1076,195 @@
         </nav>
     </div>
 
+    <!-- =====================================================================
+         MODALLAR VA OVERLAYLAR
+         ===================================================================== -->
+    
+    <!-- Ad Details Modal -->
+    <div class="overlay" id="modal-ad-details" onclick="if(event.target===this) AdDetails.close()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">E'lon tafsilotlari</div>
+                <button onclick="AdDetails.close()"><i data-feather="x"></i></button>
+            </div>
+            <div id="ad-details-content">
+                <!-- Dynamic content -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
     <div id="toast"></div>
 
+    <!-- =====================================================================
+         JAVASCRIPT LOGIKASI
+         ===================================================================== -->
     <script>
-        // ================= SOZLAMALAR =================
+        // ==========================================================================
+        // 1. GLOBAL O'ZGARUVCHILAR VA KONFIGURATSIYA
+        // ==========================================================================
         const API_BASE = 'https://uzbekcats-production.up.railway.app/api';
         const tg = window.Telegram?.WebApp;
         const TOKEN = tg?.initData || '';
-        
+
+        // Tarif narxlari (config.py dan olingan)
+        const TARIFFS = {
+            'web_only': { 
+                name: 'Web App faqat', 
+                desc: 'Botning asosiy sahifasida chiqadi',
+                prices: {1:10000, 2:18000, 3:25000, 4:31000, 5:38000} 
+            },
+            'channel_only': { 
+                name: 'Kanal faqat', 
+                desc: 'Faqat kanalga post qilinadi',
+                prices: {1:25000, 2:45000, 3:65000, 4:85000, 5:105000} 
+            },
+            'web_and_channel': { 
+                name: 'Web + Kanal', 
+                desc: 'Ikkalasida ham chiqadi',
+                prices: {1:32000, 2:50000, 3:75000, 4:95000, 5:110000} 
+            }
+        };
+
         let STATE = { 
             user: null, 
             payment_id: null,
             ads: [],
             currentFilter: 'all',
             adState: {
-                step: 1, cat_count: 1, tariff: '', photos: [], cats: [], currentCatIndex: 0,
-                address: '', phone: '', username: '', price: '', currency: "so'm"
+                step: 1, 
+                cat_count: 1, 
+                tariff: '', 
+                photos: [], 
+                cats: [], 
+                currentCatIndex: 0,
+                address: '', 
+                phone: '', 
+                username: '', 
+                price: '', 
+                currency: "so'm"
             }
         };
 
         const $ = id => document.getElementById(id);
         const num = n => Number(n || 0).toLocaleString('uz-UZ');
 
-        // Tarif narxlari (backend config.py dan olingan)
-        const TARIFFS = {
-            'web_only': { name: 'Web App', prices: {1:10000, 2:18000, 3:25000, 4:31000, 5:38000} },
-            'channel_only': { name: 'Kanal', prices: {1:25000, 2:45000, 3:65000, 4:85000, 5:105000} },
-            'web_and_channel': { name: 'Web + Kanal', prices: {1:32000, 2:50000, 3:75000, 4:95000, 5:110000} }
+        // ==========================================================================
+        // 2. UTILITY FUNKSIYALAR
+        // ==========================================================================
+        const Utils = {
+            haptic(type = 'light') {
+                if (tg?.HapticFeedback) {
+                    if (type === 'success') tg.HapticFeedback.notificationOccurred('success');
+                    else if (type === 'error') tg.HapticFeedback.notificationOccurred('error');
+                    else tg.HapticFeedback.impactOccurred(type);
+                }
+            },
+            formatDate(dateStr) {
+                if (!dateStr) return '';
+                const d = new Date(dateStr);
+                return d.toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            },
+            escapeHTML(str) {
+                return str ? str.replace(/[&<>'"]/g, 
+                    tag => ({
+                        '&': '&amp;',
+                        '<': '&lt;',
+                        '>': '&gt;',
+                        "'": '&#39;',
+                        '"': '&quot;'
+                    }[tag] || tag)
+                ) : '';
+            },
+            showSkeleton(containerId, count = 2) {
+                const el = $(containerId);
+                if (!el) return;
+                let html = '';
+                for (let i = 0; i < count; i++) {
+                    html += `
+                        <div style="margin-bottom: 12px;">
+                            <div class="skeleton skeleton-img" style="height: 120px; margin-bottom: 8px;"></div>
+                            <div class="skeleton skeleton-text"></div>
+                            <div class="skeleton skeleton-text" style="width: 50%;"></div>
+                        </div>
+                    `;
+                }
+                el.innerHTML = html;
+            }
         };
 
+        // ==========================================================================
+        // 3. UI (UMUMIY INTERFEYS)
+        // ==========================================================================
         const UI = {
             init() {
-                if (tg) { tg.ready(); tg.expand(); }
-                if (localStorage.getItem('theme') === 'light') {
+                if (tg) { 
+                    tg.ready(); 
+                    tg.expand(); 
+                    tg.setHeaderColor('#0A0D14');
+                    tg.setBackgroundColor('#0A0D14');
+                }
+                
+                // Theme
+                const savedTheme = localStorage.getItem('theme');
+                if (savedTheme === 'light') {
                     document.documentElement.setAttribute('data-theme', 'light');
+                    $('btn-theme').innerHTML = '<i data-feather="sun"></i>';
                 } else {
                     document.documentElement.setAttribute('data-theme', 'dark');
+                    $('btn-theme').innerHTML = '<i data-feather="moon"></i>';
                 }
+
                 feather.replace();
                 this.loadData();
             },
-            toast(msg) {
+            
+            toast(msg, type = 'default') {
                 const t = $('toast');
                 t.innerText = msg;
                 t.classList.add('show');
-                setTimeout(() => t.classList.remove('show'), 3000);
+                if (type === 'error') Utils.haptic('error');
+                else Utils.haptic('success');
+                
+                setTimeout(() => {
+                    t.classList.remove('show');
+                }, 3000);
             },
+            
             showPage(id, btn = null) {
                 document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
                 $(id).classList.add('active');
+                
                 if(btn) {
                     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                 }
+                
                 if(id === 'p-admin') Admin.load();
                 if(id === 'p-myads') MyAds.load();
                 if(id === 'p-rating') Rating.load();
+                
+                Utils.haptic('light');
             },
+            
             toggleTheme() {
                 const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-                document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
-                localStorage.setItem('theme', isDark ? 'light' : 'dark');
+                const newTheme = isDark ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                
+                $('btn-theme').innerHTML = newTheme === 'dark' ? '<i data-feather="moon"></i>' : '<i data-feather="sun"></i>';
+                feather.replace();
+                Utils.haptic('medium');
             },
+            
             async loadData() {
                 try {
-                    const res = await fetch(`${API_BASE}/user/me`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
-                    if(!res.ok) throw new Error("Xato");
+                    const res = await fetch(`${API_BASE}/user/me`, { 
+                        headers: { 'X-Telegram-Init-Data': TOKEN } 
+                    });
+                    
+                    if(!res.ok) throw new Error("Foydalanuvchi topilmadi");
                     STATE.user = await res.json();
 
                     $('h-name').innerText = STATE.user.full_name || "Foydalanuvchi";
@@ -702,11 +1287,15 @@
                     Dashboard.load();
                     Rating.load();
                 } catch(e) {
-                    this.toast("Server bilan aloqa yo'q");
+                    console.error(e);
+                    this.toast("Server bilan aloqa yo'q", "error");
                 }
             }
         };
 
+        // ==========================================================================
+        // 4. DASHBOARD (ASOSIY SAHIFA)
+        // ==========================================================================
         const Dashboard = {
             async load() {
                 const grid = $('ads-grid');
@@ -718,12 +1307,15 @@
                     grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-3);">E'lonlarni yuklab bo'lmadi</div>`;
                 }
             },
+            
             setFilter(type, btn) {
                 document.querySelectorAll('.tabs .tab').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 STATE.currentFilter = type;
                 this.render(type);
+                Utils.haptic('light');
             },
+            
             render(type) {
                 const grid = $('ads-grid');
                 let data = [...STATE.ads];
@@ -733,27 +1325,95 @@
                     data = data.filter(a => new Date(a.created_at).getTime() > dayAgo);
                 } else if (type === 'cheap') {
                     data.sort((a, b) => Number(a.price) - Number(b.price));
+                } else if (type === 'expensive') {
+                    data.sort((a, b) => Number(b.price) - Number(a.price));
                 }
 
                 if(data.length === 0) {
-                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-3);">E'lonlar yo'q</div>`;
+                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 30px; color: var(--text-3);">
+                        <i data-feather="inbox" style="width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.5;"></i>
+                        <br>E'lonlar yo'q
+                    </div>`;
+                    feather.replace();
                     return;
                 }
                 
-                grid.innerHTML = data.map(ad => `
-                    <div class="card" onclick="UI.toast('Batafsil: ${ad.breed}')">
-                        <img src="${ad.photos[0] ? API_BASE.replace('/api','') + ad.photos[0] : 'https://via.placeholder.com/150'}" class="card-img">
-                        <div class="card-body">
-                            <div class="card-title">${ad.breed}</div>
-                            <div class="card-meta"><i data-feather="map-pin" style="width:12px;"></i> ${ad.address}</div>
-                            <div class="card-price">${num(ad.price)} ${ad.currency}</div>
+                grid.innerHTML = data.map(ad => {
+                    const firstCat = ad.cats_data && ad.cats_data.length > 0 ? ad.cats_data[0] : {};
+                    const title = firstCat.breed || ad.breed || 'Mushuk';
+                    const imgUrl = ad.photos && ad.photos.length > 0 
+                        ? (ad.photos[0].startsWith('http') ? ad.photos[0] : API_BASE.replace('/api','') + ad.photos[0])
+                        : 'https://via.placeholder.com/300?text=Rasm+yoq';
+
+                    return `
+                        <div class="card" onclick="AdDetails.open(${ad.id})">
+                            <img src="${imgUrl}" class="card-img" onerror="this.src='https://via.placeholder.com/300?text=Xato'">
+                            <div class="card-body">
+                                <div class="card-title">${Utils.escapeHTML(title)}</div>
+                                <div class="card-meta"><i data-feather="map-pin" style="width:12px;"></i> ${Utils.escapeHTML(ad.address || '—')}</div>
+                                <div class="card-price">${num(ad.price)} ${ad.currency || "so'm"}</div>
+                            </div>
                         </div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
                 feather.replace();
             }
         };
 
+        // ==========================================================================
+        // 5. AD DETAILS (E'LON TAFSILOTLARI MODAL)
+        // ==========================================================================
+        const AdDetails = {
+            open(id) {
+                const ad = STATE.ads.find(a => a.id === id);
+                if (!ad) return;
+
+                Utils.haptic('medium');
+                
+                const catsHtml = (ad.cats_data || []).map((cat, i) => `
+                    <div style="margin-bottom: 8px; padding: 12px; background: var(--surface-2); border-radius: 8px;">
+                        <div style="font-size: 12px; color: var(--blue); font-weight: 800; margin-bottom: 4px;">${i+1}-mushuk</div>
+                        <div style="font-size: 14px; font-weight: 700;">${Utils.escapeHTML(cat.breed || '—')}</div>
+                        <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">
+                            ${Utils.escapeHTML(cat.age || '—')} • ${Utils.escapeHTML(cat.gender || '—')} • ${Utils.escapeHTML(cat.health || '—')}
+                        </div>
+                    </div>
+                `).join('');
+
+                const imgUrl = ad.photos && ad.photos.length > 0 
+                        ? (ad.photos[0].startsWith('http') ? ad.photos[0] : API_BASE.replace('/api','') + ad.photos[0])
+                        : 'https://via.placeholder.com/300?text=Rasm+yoq';
+
+                $('ad-details-content').innerHTML = `
+                    <img src="${imgUrl}" style="width: 100%; height: 250px; object-fit: cover; border-radius: 16px; margin-bottom: 16px;">
+                    
+                    <div style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">${num(ad.price)} ${ad.currency || "so'm"}</div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                        <span style="background: rgba(59,130,246,0.1); color: var(--blue); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">${Utils.escapeHTML(ad.address || '—')}</span>
+                        <span style="background: rgba(16,185,129,0.1); color: var(--green); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">Sotiladi</span>
+                    </div>
+
+                    <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Mushuklar ma'lumotlari</div>
+                    ${catsHtml || '<div style="color: var(--text-3);">Ma\'lumot yo\'q</div>'}
+                    
+                    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border);">
+                        <a href="tel:${ad.phone}" class="btn btn-primary" style="margin-bottom: 8px;">Qo'ng'iroq qilish (${Utils.escapeHTML(ad.phone)})</a>
+                        <button class="btn btn-outline" onclick="UI.toast('Admin bilan bog\\'lanish: @zayd_catlover')">Xabar yozish</button>
+                    </div>
+                `;
+                
+                $('modal-ad-details').classList.add('active');
+                feather.replace();
+            },
+            close() {
+                $('modal-ad-details').classList.remove('active');
+                Utils.haptic('light');
+            }
+        };
+
+        // ==========================================================================
+        // 6. RATING (KONKURS REYTINGI)
+        // ==========================================================================
         const Rating = {
             async load() {
                 const podium = $('rating-podium');
@@ -761,8 +1421,10 @@
                 try {
                     const res = await fetch(`${API_BASE}/rating`);
                     const data = await res.json();
+                    
                     if(data.length === 0) {
                         podium.innerHTML = `<div style="text-align: center; color: var(--text-3); padding: 20px;">Reyting bo'sh</div>`;
+                        list.innerHTML = '';
                         return;
                     }
 
@@ -773,23 +1435,23 @@
                     if (top3[1]) podiumHtml += `
                         <div class="podium-item podium-2" style="order:1;">
                             <img src="${top3[1].avatar}" class="podium-avatar">
-                            <div class="podium-name">${top3[1].name}</div>
-                            <div class="podium-score">${top3[1].score}</div>
+                            <div class="podium-name">${Utils.escapeHTML(top3[1].name)}</div>
+                            <div class="podium-score">${top3[1].score} ball</div>
                             <div class="podium-block">2</div>
                         </div>`;
                     if (top3[0]) podiumHtml += `
                         <div class="podium-item podium-1" style="order:2;">
                             <div class="crown">👑</div>
                             <img src="${top3[0].avatar}" class="podium-avatar">
-                            <div class="podium-name">${top3[0].name}</div>
-                            <div class="podium-score">${top3[0].score}</div>
+                            <div class="podium-name">${Utils.escapeHTML(top3[0].name)}</div>
+                            <div class="podium-score">${top3[0].score} ball</div>
                             <div class="podium-block">1</div>
                         </div>`;
                     if (top3[2]) podiumHtml += `
                         <div class="podium-item podium-3" style="order:3;">
                             <img src="${top3[2].avatar}" class="podium-avatar">
-                            <div class="podium-name">${top3[2].name}</div>
-                            <div class="podium-score">${top3[2].score}</div>
+                            <div class="podium-name">${Utils.escapeHTML(top3[2].name)}</div>
+                            <div class="podium-score">${top3[2].score} ball</div>
                             <div class="podium-block">3</div>
                         </div>`;
                     podium.innerHTML = podiumHtml;
@@ -797,7 +1459,7 @@
                     list.innerHTML = rest.map((u, i) => `
                         <div class="card" style="padding: 16px; display: flex; align-items: center; gap: 16px;">
                             <div style="font-weight: 800; color: var(--text-3); width: 24px; font-size: 16px;">${i+4}</div>
-                            <div style="flex: 1; font-weight: 800; font-size: 15px;">${u.name}</div>
+                            <div style="flex: 1; font-weight: 800; font-size: 15px;">${Utils.escapeHTML(u.name)}</div>
                             <div style="font-weight: 800; color: var(--blue);">${u.score} ball</div>
                         </div>
                     `).join('');
@@ -805,19 +1467,27 @@
             }
         };
 
+        // ==========================================================================
+        // 7. TOPUP (HISOB TO'LDIRISH)
+        // ==========================================================================
         const Topup = {
             timer: null,
             setAmount(val, btn) {
                 $('topup-amount').value = val;
                 document.querySelectorAll('.qa-btn').forEach(b => b.classList.remove('active'));
                 if(btn) btn.classList.add('active');
+                Utils.haptic('light');
             },
             updateAmounts(val) {
                 document.querySelectorAll('.qa-btn').forEach(b => b.classList.remove('active'));
             },
             async start() {
                 const amt = parseInt($('topup-amount').value);
-                if(!amt || amt < 1000) return UI.toast("Minimal 1000 so'm");
+                if(!amt || amt < 1000) return UI.toast("Minimal 1000 so'm", "error");
+
+                const btn = $('btn-topup-start');
+                btn.innerHTML = '<div class="spinner" style="width: 20px; height: 20px; border-width: 2px; margin: 0;"></div>';
+                btn.disabled = true;
 
                 try {
                     const res = await fetch(`${API_BASE}/topup`, {
@@ -831,7 +1501,9 @@
 
                     STATE.payment_id = data.payment_id;
 
+                    $('topup-initial').classList.add('hidden');
                     $('topup-info').classList.remove('hidden');
+                    
                     $('t-card').innerText = data.card_number;
                     $('t-holder').innerText = data.card_holder;
                     $('t-sum').innerText = num(data.amount) + " so'm";
@@ -845,27 +1517,42 @@
                         if(time <= 0) {
                             clearInterval(this.timer);
                             $('t-timer').innerText = "00:00";
+                            UI.toast("To'lov vaqti tugadi!", "error");
+                            setTimeout(() => {
+                                $('topup-initial').classList.remove('hidden');
+                                $('topup-info').classList.add('hidden');
+                            }, 2000);
                         }
                         time--;
                     }, 1000);
+                    
                     UI.toast("To'lov yaratildi!");
-                } catch(e) { UI.toast(e.message); }
+                    Utils.haptic('success');
+                } catch(e) { 
+                    UI.toast(e.message, "error"); 
+                } finally {
+                    btn.innerHTML = 'Davom etish';
+                    btn.disabled = false;
+                }
             },
             copyCard() {
                 const card = $('t-card').innerText.replace(/\s/g, '');
-                navigator.clipboard.writeText(card).then(() => UI.toast("Karta nusxalandi!"));
+                navigator.clipboard.writeText(card).then(() => {
+                    UI.toast("Karta nusxalandi!");
+                    Utils.haptic('success');
+                });
             },
             async upload(input) {
                 if(!input.files[0]) return;
-                if(!STATE.payment_id) return UI.toast("To'lov ID topilmadi!");
+                if(!STATE.payment_id) return UI.toast("To'lov ID topilmadi!", "error");
 
                 const formData = new FormData();
                 formData.append('payment_id', STATE.payment_id);
                 formData.append('file', input.files[0]);
 
-                const btn = input.parentElement;
-                const originalHtml = btn.innerHTML;
-                btn.innerHTML = `<div class="spinner"></div>`;
+                const label = input.parentElement;
+                const originalHtml = label.innerHTML;
+                label.innerHTML = `<div class="spinner"></div>`;
 
                 try {
                     const res = await fetch(`${API_BASE}/topup/receipt`, {
@@ -881,16 +1568,21 @@
                         throw new Error("Xatolik");
                     }
                 } catch(e) { 
-                    UI.toast("Chekni yuklashda xatolik"); 
-                    btn.innerHTML = originalHtml;
+                    UI.toast("Chekni yuklashda xatolik", "error"); 
+                    label.innerHTML = originalHtml;
                 }
             }
         };
 
+        // ==========================================================================
+        // 8. CREATE AD (REKLAMA BERISH)
+        // ==========================================================================
         const CreateAd = {
             reset() {
                 STATE.adState = { step: 1, cat_count: 1, tariff: '', photos: [], cats: [], currentCatIndex: 0, address: '', phone: '', username: '', price: '', currency: "so'm" };
                 this.nextStep(1);
+                UI.showPage('p-create');
+                Utils.haptic('medium');
             },
             nextStep(step) {
                 STATE.adState.step = step;
@@ -904,6 +1596,7 @@
             setCount(count) {
                 STATE.adState.cat_count = count;
                 this.nextStep(2);
+                Utils.haptic('light');
             },
             renderTariffs() {
                 const list = $('tariff-list');
@@ -917,10 +1610,11 @@
                                 <div style="font-weight: 800; font-size: 16px;">${t.name}</div>
                                 <div class="tariff-price">${num(price)} <span style="font-size: 14px;">so'm</span></div>
                             </div>
+                            <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">${t.desc}</div>
                             <ul class="tariff-features">
-                                ${key !== 'channel_only' ? '<li><i data-feather="check"></i> Botning asosiy sahifasida chiqadi</li>' : ''}
-                                ${key !== 'web_only' ? '<li><i data-feather="check"></i> Kanallarga post qilinadi</li>' : ''}
-                                <li><i data-feather="check"></i> 24/7 Qo'llab-quvvatlash</li>
+                                ${key !== 'channel_only' ? '<li><i data-feather="check"></i> Botning asosiy sahifasida chiqadi (7 kun)</li>' : ''}
+                                ${key !== 'web_only' ? '<li><i data-feather="check"></i> Kanallarga post qilinadi (Umrbod)</li>' : ''}
+                                <li><i data-feather="check"></i> 24/7 Qo\'llab-quvvatlash</li>
                             </ul>
                         </div>
                     `;
@@ -931,18 +1625,19 @@
                 STATE.adState.tariff = key;
                 document.querySelectorAll('.tariff-card').forEach(c => c.classList.remove('selected'));
                 el.classList.add('selected');
+                Utils.haptic('light');
             },
             checkBalance() {
-                if(!STATE.adState.tariff) return UI.toast("Tarifni tanlang!");
+                if(!STATE.adState.tariff) return UI.toast("Tarifni tanlang!", "error");
                 const price = TARIFFS[STATE.adState.tariff].prices[STATE.adState.cat_count];
                 if(STATE.user.balance < price) {
-                    UI.toast("Mablag' yetarli emas!");
+                    UI.toast("Mablag' yetarli emas!", "error");
                     return UI.showPage('p-topup');
                 }
                 this.nextStep(3);
             },
             handleFiles(input) {
-                if (input.files.length > 3) return UI.toast("Maksimal 3 ta rasm!");
+                if (input.files.length > 3) return UI.toast("Maksimal 3 ta rasm!", "error");
                 STATE.adState.photos = Array.from(input.files);
                 const box = $('preview-box');
                 box.innerHTML = '';
@@ -970,6 +1665,7 @@
 
                 if(STATE.adState.currentCatIndex < STATE.adState.cat_count) {
                     this.renderCatForm();
+                    Utils.haptic('light');
                 } else {
                     this.nextStep(5);
                 }
@@ -977,14 +1673,16 @@
             fillUsername() {
                 if (tg?.initDataUnsafe?.user?.username) {
                     $('ad-username').value = '@' + tg.initDataUnsafe.user.username;
+                    UI.toast("Username to'ldirildi!");
                 } else {
-                    UI.toast("Telegram username topilmadi");
+                    UI.toast("Telegram username topilmadi", "error");
                 }
             },
             setCurrency(curr, btn) {
                 STATE.adState.currency = curr;
                 document.querySelectorAll('#w-step-6 .btn-outline').forEach(b => b.style.borderColor = 'var(--border)');
                 btn.style.borderColor = 'var(--blue)';
+                Utils.haptic('light');
             },
             preview() {
                 const phone = $('ad-phone').value;
@@ -992,7 +1690,7 @@
                 const address = $('ad-address').value;
                 const price = $('ad-price').value;
 
-                if(!phone || !price) return UI.toast("Maydonlarni to'ldiring!");
+                if(!phone || !price) return UI.toast("Maydonlarni to'ldiring!", "error");
 
                 STATE.adState.phone = phone;
                 STATE.adState.username = username;
@@ -1005,8 +1703,8 @@
                 $('preview-data').innerHTML = `
                     <div style="font-size: 13px; color: var(--text-3); margin-bottom: 8px;">Tarif: <b style="color:var(--blue)">${tariffName}</b></div>
                     <div style="font-size: 15px; font-weight: 700; margin-bottom: 8px;">${STATE.adState.cat_count} ta mushuk</div>
-                    <div style="font-size: 13px; margin-bottom: 4px;">📍 ${address}</div>
-                    <div style="font-size: 13px; margin-bottom: 4px;">📞 ${phone} ${username ? '('+username+')' : ''}</div>
+                    <div style="font-size: 13px; margin-bottom: 4px;">📍 ${Utils.escapeHTML(address)}</div>
+                    <div style="font-size: 13px; margin-bottom: 4px;">📞 ${Utils.escapeHTML(phone)} ${username ? '('+Utils.escapeHTML(username)+')' : ''}</div>
                     <div style="font-size: 18px; font-weight: 800; color: var(--blue); margin-top: 12px;">${num(price)} ${STATE.adState.currency}</div>
                     <hr style="border-color: var(--border); margin: 12px 0;">
                     <div style="font-size: 14px;">Yechiladi: <b style="color: var(--red);">${num(cost)} so'm</b></div>
@@ -1023,7 +1721,7 @@
             },
             async submit() {
                 const cost = TARIFFS[STATE.adState.tariff].prices[STATE.adState.cat_count];
-                if(STATE.user.balance < cost) return UI.toast("Mablag' yetarli emas!");
+                if(STATE.user.balance < cost) return UI.toast("Mablag' yetarli emas!", "error");
 
                 const btn = $('w-step-7').querySelector('.btn-primary');
                 btn.innerHTML = `<div class="spinner" style="width:20px; height:20px; border-width:2px; margin:0;"></div>`;
@@ -1053,10 +1751,11 @@
                     }
 
                     UI.toast("E'lon muvaffaqiyatli yaratildi!");
+                    Utils.haptic('success');
                     UI.showPage('p-dashboard');
                     UI.loadData(); // Balansni yangilash
                 } catch(e) {
-                    UI.toast(e.message);
+                    UI.toast(e.message, "error");
                 } finally {
                     btn.innerText = "Tasdiqlash va To'lov";
                     btn.disabled = false;
@@ -1064,6 +1763,9 @@
             }
         };
 
+        // ==========================================================================
+        // 9. MY ADS (MENING E'LONLARIM)
+        // ==========================================================================
         const MyAds = {
             async load() {
                 const list = $('myads-list');
@@ -1073,25 +1775,42 @@
                     const ads = await res.json();
                     
                     if(ads.length === 0) {
-                        list.innerHTML = `<div style="text-align:center; color:var(--text-3); padding: 30px;">Sizda e'lonlar yo'q</div>`;
+                        list.innerHTML = `
+                            <div style="text-align:center; color:var(--text-3); padding: 30px;">
+                                <i data-feather="inbox" style="width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.5;"></i>
+                                <br>Sizda e'lonlar yo'q
+                            </div>`;
+                        feather.replace();
                         return;
                     }
 
                     const statusMap = { 'pending': '⏳ Kutilmoqda', 'approved': '✅ Tasdiqlangan', 'rejected': '❌ Rad etilgan' };
 
-                    list.innerHTML = ads.map(ad => `
-                        <div class="card" style="padding: 12px; display: flex; gap: 12px; align-items: center;">
-                            <img src="${ad.photos[0] ? API_BASE.replace('/api','') + ad.photos[0] : 'https://via.placeholder.com/60'}" style="width: 70px; height: 70px; border-radius: 12px; object-fit: cover;">
-                            <div style="flex: 1;">
-                                <div style="font-weight: 800; font-size: 15px;">${ad.cats_data?.[0]?.breed || 'Mushuk'}</div>
-                                <div style="font-size: 13px; color: var(--text-2); margin-top: 4px;">Holat: ${statusMap[ad.status] || ad.status}</div>
+                    list.innerHTML = ads.map(ad => {
+                        const firstCat = ad.cats_data && ad.cats_data.length > 0 ? ad.cats_data[0] : {};
+                        const title = firstCat.breed || ad.breed || 'Mushuk';
+                        const imgUrl = ad.photos && ad.photos.length > 0 
+                            ? (ad.photos[0].startsWith('http') ? ad.photos[0] : API_BASE.replace('/api','') + ad.photos[0])
+                            : 'https://via.placeholder.com/60';
+                            
+                        const statusColor = ad.status === 'approved' ? 'var(--green)' : (ad.status === 'rejected' ? 'var(--red)' : 'var(--amber)');
+
+                        return `
+                            <div class="card" style="padding: 12px; display: flex; gap: 12px; align-items: center;">
+                                <img src="${imgUrl}" style="width: 70px; height: 70px; border-radius: 12px; object-fit: cover;">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 800; font-size: 15px;">${Utils.escapeHTML(title)}</div>
+                                    <div style="font-size: 13px; color: ${statusColor}; margin-top: 4px; font-weight: 700;">
+                                        ${statusMap[ad.status] || ad.status}
+                                    </div>
+                                </div>
+                                ${ad.status === 'approved' ? `
+                                    <button class="btn btn-outline" style="width: auto; padding: 8px 12px; font-size: 12px;" onclick="MyAds.markDone(${ad.id})">Sotildi</button>
+                                ` : ''}
                             </div>
-                            ${ad.status === 'approved' ? `
-                                <button class="btn btn-outline" style="width: auto; padding: 8px 12px; font-size: 12px;" onclick="MyAds.markDone(${ad.id})">Sotildi</button>
-                            ` : ''}
-                        </div>
-                    `).join('');
-                } catch(e) { list.innerHTML = '<div style="text-align:center; color:var(--red);">Xatolik</div>'; }
+                        `;
+                    }).join('');
+                } catch(e) { list.innerHTML = '<div style="text-align:center; color:var(--red);">Xatolik yuz berdi</div>'; }
             },
             async markDone(id) {
                 if(!confirm("Rostdan ham bu e'lonni sotilgan deb belgilaysizmi?")) return;
@@ -1099,12 +1818,17 @@
                     const res = await fetch(`${API_BASE}/ads/${id}`, { method: 'DELETE', headers: { 'X-Telegram-Init-Data': TOKEN } });
                     if(res.ok) {
                         UI.toast("E'lon sotildi deb belgilandi!");
+                        Utils.haptic('success');
                         this.load();
+                        Dashboard.load();
                     }
-                } catch(e) { UI.toast("Xatolik"); }
+                } catch(e) { UI.toast("Xatolik", "error"); }
             }
         };
 
+        // ==========================================================================
+        // 10. ADMIN PANEL
+        // ==========================================================================
         const Admin = {
             currentTab: 'stats',
             async load() {
@@ -1112,23 +1836,30 @@
                     const res = await fetch(`${API_BASE}/admin/stats`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
                     const data = await res.json();
                     
-                    $('stat-total-ads').innerText = data.total_ads;
-                    $('stat-total-users').innerText = data.total_users;
-                    $('stat-pending').innerText = data.pending_ads;
-                    $('stat-cards').innerText = data.total_cards;
+                    $('stat-total-ads').innerText = data.total_ads || 0;
+                    $('stat-total-users').innerText = data.total_users || 0;
+                    $('stat-pending').innerText = data.pending_ads || 0;
+                    $('stat-cards').innerText = data.total_cards || 0;
 
                     $('inc-today').innerText = num(data.today_income) + " so'm";
                     $('inc-yesterday').innerText = num(data.yesterday_income) + " so'm";
                     $('inc-week').innerText = num(data.week_income) + " so'm";
                     $('inc-month').innerText = num(data.month_income) + " so'm";
-                } catch(e) {}
+                } catch(e) {
+                    console.error("Admin stats error", e);
+                }
             },
             setTab(tab, btn) {
                 document.querySelectorAll('#p-admin .tab').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 document.querySelectorAll('#p-admin [id^="admin-tab-"]').forEach(el => el.classList.add('hidden'));
                 $(`admin-tab-${tab}`).classList.remove('hidden');
+                
+                Utils.haptic('light');
+                
                 if(tab === 'ads') this.loadAds();
+                if(tab === 'users') this.loadUsers();
+                if(tab === 'cards') this.loadCards();
             },
             async loadAds() {
                 const list = $('admin-ads-list');
@@ -1136,10 +1867,73 @@
                 try {
                     const res = await fetch(`${API_BASE}/admin/ads`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
                     const ads = await res.json();
-                    list.innerHTML = ads.slice(0, 20).map(ad => `
-                        <div class="card" style="padding: 12px;">
-                            <div style="font-weight: 800;">${ad.cats_data?.[0]?.breed || 'Noma\'lum'} <span style="font-size:10px; color:var(--text-3);">#${ad.id}</span></div>
-                            <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">Holat: ${ad.status}</div>
+                    
+                    if(ads.length === 0) {
+                        list.innerHTML = '<div class="text-center" style="color: var(--text-3); padding: 20px;">E\'lonlar yo\'q</div>';
+                        return;
+                    }
+
+                    list.innerHTML = ads.map(ad => {
+                        const firstCat = ad.cats_data && ad.cats_data.length > 0 ? ad.cats_data[0] : {};
+                        const title = firstCat.breed || ad.breed || 'Noma\'lum';
+                        
+                        return `
+                            <div class="admin-list-item">
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 800;">${Utils.escapeHTML(title)} <span style="font-size:10px; color:var(--text-3);">#${ad.id}</span></div>
+                                    <div style="font-size: 12px; color: var(--text-3); margin-top: 2px;">Holat: ${ad.status}</div>
+                                </div>
+                                ${ad.status === 'pending' ? `
+                                    <div style="display: flex; gap: 4px;">
+                                        <button class="btn btn-success" style="width: auto; padding: 6px 10px; font-size: 12px;" onclick="Admin.approveAd(${ad.id})">Tasdiqlash</button>
+                                        <button class="btn btn-danger" style="width: auto; padding: 6px 10px; font-size: 12px;" onclick="Admin.rejectAd(${ad.id})">Rad etish</button>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('');
+                } catch(e) {}
+            },
+            async loadUsers() {
+                const list = $('admin-users-list');
+                list.innerHTML = '<div class="spinner"></div>';
+                try {
+                    const res = await fetch(`${API_BASE}/admin/users`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
+                    const users = await res.json();
+                    
+                    list.innerHTML = users.slice(0, 50).map(u => `
+                        <div class="admin-list-item">
+                            <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800;">
+                                ${(u.full_name || 'U')[0]}
+                            </div>
+                            <div style="flex: 1;">
+                                <div style="font-weight: 800; font-size: 14px;">${Utils.escapeHTML(u.full_name)}</div>
+                                <div style="font-size: 12px; color: var(--text-3);">#${u.user_number} • ${Utils.escapeHTML(u.phone)}</div>
+                            </div>
+                            <div style="font-weight: 800; color: var(--blue);">${num(u.balance)}</div>
+                        </div>
+                    `).join('');
+                } catch(e) {}
+            },
+            async loadCards() {
+                const list = $('admin-cards-list');
+                list.innerHTML = '<div class="spinner"></div>';
+                try {
+                    const res = await fetch(`${API_BASE}/admin/cards`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
+                    const cards = await res.json();
+                    
+                    if(cards.length === 0) {
+                        list.innerHTML = '<div class="text-center" style="color: var(--text-3); padding: 20px;">Kartalar yo\'q</div>';
+                        return;
+                    }
+
+                    list.innerHTML = cards.map(c => `
+                        <div class="admin-list-item">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 800; font-family: 'Space Grotesk';">${c.number}</div>
+                                <div style="font-size: 12px; color: var(--text-3);">${Utils.escapeHTML(c.holder)}</div>
+                            </div>
+                            ${c.is_active ? '<span style="color: var(--green); font-size: 12px; font-weight: 700;">Faol</span>' : ''}
                         </div>
                     `).join('');
                 } catch(e) {}
@@ -1147,7 +1941,7 @@
             async saveCard() {
                 const number = $('adm-card-num').value;
                 const holder = $('adm-card-holder').value;
-                if(!number || !holder) return UI.toast("To'ldiring!");
+                if(!number || !holder) return UI.toast("To'ldiring!", "error");
                 try {
                     await fetch(`${API_BASE}/admin/card`, {
                         method: 'POST',
@@ -1155,18 +1949,60 @@
                         body: JSON.stringify({ number, holder })
                     });
                     UI.toast("Karta saqlandi!");
+                    Utils.haptic('success');
                     $('adm-card-num').value = '';
                     $('adm-card-holder').value = '';
+                    this.loadCards();
+                } catch(e) {}
+            },
+            async approveAd(id) {
+                try {
+                    const res = await fetch(`${API_BASE}/admin/ads/approve/${id}`, {
+                        method: 'POST',
+                        headers: { 'X-Telegram-Init-Data': TOKEN }
+                    });
+                    if(res.ok) {
+                        UI.toast("E'lon tasdiqlandi!");
+                        Utils.haptic('success');
+                        this.loadAds();
+                        this.load(); // Update stats
+                    }
+                } catch(e) {}
+            },
+            async rejectAd(id) {
+                const reason = prompt("Rad etish sababini yozing:");
+                if(reason === null) return;
+                try {
+                    const res = await fetch(`${API_BASE}/admin/ads/reject/${id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
+                        body: JSON.stringify({ reason })
+                    });
+                    if(res.ok) {
+                        UI.toast("E'lon rad etildi!");
+                        Utils.haptic('error');
+                        this.loadAds();
+                        this.load(); // Update stats
+                    }
                 } catch(e) {}
             }
         };
 
-        // Event Listeners
-        document.addEventListener("DOMContentLoaded", () => UI.init());
-        
-        // Nav FAB uchun maxsus click
-        document.querySelector('.nav-fab').addEventListener('click', () => {
-            CreateAd.reset();
+        // ==========================================================================
+        // 11. EVENT LISTENERS VA ISHGA TUSHIRISH
+        // ==========================================================================
+        document.addEventListener("DOMContentLoaded", () => {
+            UI.init();
+            
+            // Nav FAB uchun maxsus click
+            document.querySelector('.nav-fab').addEventListener('click', () => {
+                CreateAd.reset();
+            });
+            
+            // Ad details modalni yopish uchun Escape tugmasi
+            document.addEventListener('keydown', (e) => {
+                if(e.key === 'Escape') AdDetails.close();
+            });
         });
     </script>
 </body>
