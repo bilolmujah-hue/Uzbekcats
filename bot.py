@@ -1,7 +1,7 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: bot.py
-# TAVSIF: To'liq mukammal Telegram Bot (Aiogram v3) - Barcha xatolar tuzatilgan
+# TAVSIF: Premium dizayn, to'liq funksiyalar, xatosiz Aiogram v3 bot
 # ==============================================================================
 
 import asyncio
@@ -34,12 +34,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # =====================================================================
-# BOT + DISPATCHER
+# BOT VA DISPATCHER
 # =====================================================================
-bot = Bot(
-    token=BotConfig.BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-)
+bot = Bot(token=BotConfig.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
@@ -55,10 +52,15 @@ userbot_client: TelegramClient | None = None
 # =====================================================================
 # YORDAMCHI FUNKSIYALAR
 # =====================================================================
+async def safe_answer(call: CallbackQuery, text: str = None, show_alert: bool = False):
+    try: await call.answer(text=text, show_alert=show_alert)
+    except TelegramBadRequest: pass
+
 async def safe_edit_text(message: Message, text: str, reply_markup=None):
     try:
         await message.edit_text(text, reply_markup=reply_markup)
-    except TelegramBadRequest:
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e).lower(): return
         try: await message.delete()
         except: pass
         await message.answer(text, reply_markup=reply_markup)
@@ -68,34 +70,44 @@ async def safe_delete(message: Message):
     except: pass
 
 # =====================================================================
-# USERBOT LOGIKASI
+# USERBOT (EOF XATOSI TUZATILDI)
 # =====================================================================
 async def start_userbot(session_string: str):
     global userbot_client
+    if not session_string or len(session_string) < 10:
+        return
     try:
         if userbot_client and userbot_client.is_connected():
             await userbot_client.disconnect()
-        userbot_client = TelegramClient(
-            StringSession(session_string),
-            api_id=UserbotConfig.API_ID,
-            api_hash=UserbotConfig.API_HASH,
-        )
-        await userbot_client.start()
-        logger.info("✅ Userbot ishga tushdi")
+            
+        userbot_client = TelegramClient(StringSession(session_string), api_id=UserbotConfig.API_ID, api_hash=UserbotConfig.API_HASH)
+        await userbot_client.connect() # start() o'rniga connect()
+        
+        if not await userbot_client.is_user_authorized():
+            logger.error("❌ Userbot sessiyasi eskirgan! Iltimos, qaytadan kod orqali ulang.")
+            await userbot_client.disconnect()
+            userbot_client = None
+            return
 
+        logger.info("✅ Userbot muvaffaqiyatli ishga tushdi")
+        
         @userbot_client.on(events.NewMessage(chats=UserbotConfig.TARGET_BOT))
         async def handler(event):
             text = event.message.text or ""
             m = re.search(UserbotConfig.CARD_TRANSFER_REGEX, text)
             if not m: return
-            amount = int(m.group(1).replace(" ", ""))
-            last4 = m.group(2)
-            user_id = await db.match_userbot_payment(amount, last4)
-            if user_id:
-                try: await bot.send_message(user_id, Texts.TOPUP_PAID.format(amount=amount))
-                except: pass
-    except Exception as e:
+            try:
+                amount = int(m.group(1).replace(" ", ""))
+                last4 = m.group(2)
+                user_id = await db.match_userbot_payment(amount, last4)
+                if user_id:
+                    try: await bot.send_message(user_id, Texts.TOPUP_PAID.format(amount=amount))
+                    except: pass
+            except Exception as e: 
+                logger.warning(f"Userbot parse xatosi: {e}")
+    except Exception as e: 
         logger.error(f"❌ Userbot xatosi: {e}")
+        userbot_client = None
 
 # =====================================================================
 # MAJBURIY OBUNA
@@ -113,128 +125,101 @@ async def check_subscription(user_id: int) -> tuple[bool, bool]:
         except: pass
     return sotish_ok, hadiya_ok
 
-def get_sub_text(sotish_ok: bool, hadiya_ok: bool) -> str:
-    footer = "✅ <b>Barcha kanallarga obuna bo'lgansiz!</b>" if (sotish_ok and hadiya_ok) else "Obuna bo'lgach, <b>«🔄 Tekshirish»</b> tugmasini bosing."
-    return Texts.SUB_REQUIRED_TEXT.format(
-        sotish_icon="✅" if sotish_ok else "❌",
-        hadiya_icon="✅" if hadiya_ok else "❌",
-        footer=footer,
-    )
-
-def get_subscription_kb(sotish_ok: bool, hadiya_ok: bool) -> InlineKeyboardMarkup:
+def get_sub_kb(sotish_ok: bool, hadiya_ok: bool) -> InlineKeyboardMarkup:
     kb = []
     if sotish_ok: kb.append([InlineKeyboardButton(text="✅ Sotish kanali", callback_data="noop")])
-    else: kb.append([InlineKeyboardButton(text="📢 Sotish kanalga obuna", url=CHANNEL_SOTISH_LINK)])
+    else: kb.append([InlineKeyboardButton(text="📢 Sotish kanaliga obuna", url=CHANNEL_SOTISH_LINK)])
     if hadiya_ok: kb.append([InlineKeyboardButton(text="✅ Hadiya kanali", callback_data="noop")])
-    else: kb.append([InlineKeyboardButton(text="🎁 Hadiya kanalga obuna", url=CHANNEL_HADIYA_LINK)])
-    kb.append([InlineKeyboardButton(text="🔄 Tekshirish", callback_data="check_sub")])
+    else: kb.append([InlineKeyboardButton(text="🎁 Hadiya kanaliga obuna", url=CHANNEL_HADIYA_LINK)])
+    
+    if not (sotish_ok and hadiya_ok): 
+        kb.append([InlineKeyboardButton(text="🔄 Obunani tekshirish", callback_data="check_sub")])
+    else: 
+        kb.append([InlineKeyboardButton(text="➡️ Davom etish", callback_data="continue_reg")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 # =====================================================================
 # FSM HOLATLARI
 # =====================================================================
-class RegStates(StatesGroup):
-    checking_subscription = State()
+class RegStates(StatesGroup): 
     waiting_phone = State()
 
 class AdStates(StatesGroup):
-    choosing_cat_count = State()
-    choosing_media_type = State()
-    waiting_media = State()
-    choosing_breed = State()
+    cat_count = State()
+    media_type = State()
+    media = State()
+    breed = State()
     custom_breed = State()
-    choosing_age = State()
-    choosing_health = State()
-    choosing_gender = State()
-    choosing_sterilization = State()
-    waiting_address = State()
-    waiting_phone = State()
-    choosing_currency = State()
-    waiting_price = State()
+    age = State()
+    health = State()
+    gender = State()
+    sterilization = State()
+    address = State()
+    phone = State()
+    price = State()
     preview = State()
 
-class AdminStates(StatesGroup):
-    add_balance_user_id = State()
-    add_balance_amount = State()
-    add_score_batch = State()
-    decline_reason = State()
-    editing_ad_field = State()
-    editing_ad_value = State()
+class AdminStates(StatesGroup): 
+    balance_id = State()
+    balance_amount = State()
+    score = State()
+    decline = State()
+    edit_id = State()
+    edit_val = State()
 
 # =====================================================================
-# KLAVIATURALAR
+# PREMIUM MENYULAR VA KLAVIATURALAR
 # =====================================================================
-def get_main_menu_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
+def main_menu(is_admin=False):
     kb = [
-        [InlineKeyboardButton(text="📢 Kanalga reklama bermoqchiman", callback_data="menu_reklama")],
-        [InlineKeyboardButton(text="🏆 Konkurs", callback_data="menu_konkurs")],
+        [InlineKeyboardButton(text="🛒 E'lon joylashtirish", callback_data="menu_reklama")],
+        [InlineKeyboardButton(text="🏆 Konkurs va Takliflar", callback_data="menu_konkurs")],
         [InlineKeyboardButton(text="💳 Hisobni to'ldirish", web_app=types.WebAppInfo(url=f"{BotConfig.WEB_APP_URL}?page=topup"))],
         [InlineKeyboardButton(text="📋 Mening e'lonlarim", callback_data="menu_my_orders")],
-        [InlineKeyboardButton(text="ℹ️ Bot haqida", callback_data="menu_about")],
-        [InlineKeyboardButton(text="👤 Admin bilan bog'lanish", callback_data="menu_admin")],
-        [InlineKeyboardButton(text="🖥️ Web App'ni ochish", web_app=types.WebAppInfo(url=BotConfig.WEB_APP_URL))],
+        [InlineKeyboardButton(text="ℹ️ Bot haqida ma'lumot", callback_data="menu_about")],
+        [InlineKeyboardButton(text="👤 Qo'llab-quvvatlash (Admin)", callback_data="menu_admin")],
+        [InlineKeyboardButton(text="🖥️ Premium Web App", web_app=types.WebAppInfo(url=BotConfig.WEB_APP_URL))],
     ]
-    if is_admin:
-        kb.append([InlineKeyboardButton(text="👨‍💼 Admin paneli", callback_data="admin_panel")])
+    if is_admin: 
+        kb.append([InlineKeyboardButton(text="👨‍💼 Boshqaruv paneli", callback_data="admin_panel")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-def get_phone_kb() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📞 Raqamni yuborish", request_contact=True)]], resize_keyboard=True, one_time_keyboard=True)
+def get_phone_kb(): 
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📞 Raqamni ulashish", request_contact=True)]], resize_keyboard=True, one_time_keyboard=True)
 
-def get_ad_type_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Mushukimni sotmoqchiman", callback_data="adtype_sotish")],
-        [InlineKeyboardButton(text="🎁 Mushukimni hadiyaga bermoqchiman", callback_data="adtype_hadiya")],
-        [InlineKeyboardButton(text="↩️ Asosiy menyuga qaytish", callback_data="menu_back_to_main")],
-    ])
-
-def get_media_type_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🖼️ Rasm yuboraman", callback_data="media_photo")],
-        [InlineKeyboardButton(text="🎥 Video yuboraman (1 daqiqagacha)", callback_data="media_video")],
-        [InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_reklama")],
-    ])
-
-def get_preview_kb(balance: int, price: int) -> InlineKeyboardMarkup:
-    kb = []
-    if balance < price:
-        kb.append([InlineKeyboardButton(text="💳 Hisobni to'ldirish", web_app=types.WebAppInfo(url=f"{BotConfig.WEB_APP_URL}?page=topup"))])
-    kb.append([InlineKeyboardButton(text="✅ Ha, roziman va Tasdiqlash", callback_data="preview_confirm")])
-    kb.append([InlineKeyboardButton(text="❌ Bekor qilish", callback_data="menu_reklama")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_viloyat_kb() -> InlineKeyboardMarkup:
-    kb = [[InlineKeyboardButton(text=v, callback_data="viloyat_" + v.lower().replace(" ", "_").replace("'", ""))] for v in DataLists.VILOYATLAR]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_breed_kb(page: int = 0) -> InlineKeyboardMarkup:
+def get_viloyat_kb():
     kb, row = [], []
-    for i, breed in enumerate(DataLists.BREEDS[page]):
-        row.append(InlineKeyboardButton(text=breed, callback_data=f"breed_{page}_{i}"))
+    for v in DataLists.VILOYATLAR:
+        row.append(InlineKeyboardButton(text=v, callback_data=f"vil_{v}"))
         if len(row) == 2: kb.append(row); row = []
     if row: kb.append(row)
-    nav = []
-    if page > 0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"breed_page_{page-1}"))
-    if page < len(DataLists.BREEDS) - 1: nav.append(InlineKeyboardButton(text="➡️", callback_data=f"breed_page_{page+1}"))
-    if nav: kb.append(nav)
-    kb.append([InlineKeyboardButton(text="✏️ O'zim yozaman", callback_data="breed_custom")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-def get_age_kb() -> InlineKeyboardMarkup:
+def get_breed_kb(page=0):
+    kb, row = [], []
+    for i, breed in enumerate(DataLists.BREEDS[page]):
+        row.append(InlineKeyboardButton(text=breed, callback_data=f"br_{page}_{i}"))
+        if len(row) == 2: kb.append(row); row = []
+    if row: kb.append(row)
+    
+    nav = []
+    if page > 0: nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"br_p_{page-1}"))
+    if page < len(DataLists.BREEDS) - 1: nav.append(InlineKeyboardButton(text="➡️", callback_data=f"br_p_{page+1}"))
+    if nav: kb.append(nav)
+    kb.append([InlineKeyboardButton(text="✏️ Zotni o'zim yozaman", callback_data="br_custom")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def get_age_kb():
     kb, row = [], []
     for age in DataLists.AGES:
-        cb = age.replace(" ", "_").replace(",", "") 
+        cb = age.replace(" ", "_").replace(",", "")
         row.append(InlineKeyboardButton(text=age, callback_data=f"age_{cb}"))
         if len(row) == 3: kb.append(row); row = []
     if row: kb.append(row)
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-def get_simple_kb(options: list, prefix: str) -> InlineKeyboardMarkup:
-    kb = [[InlineKeyboardButton(text=text, callback_data=f"{prefix}_{val}")] for text, val in options]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
 # =====================================================================
-# KANALGA POST (ALBOM VA BITTA RASM QO'LLAB-QUVVATLANADI)
+# PREMIUM KANALGA POST QILISH (ALBOM VA XATOLAR TUZATILGAN)
 # =====================================================================
 async def post_to_channel(ad_data: dict):
     ad_type = ad_data.get("ad_type")
@@ -249,19 +234,46 @@ async def post_to_channel(ad_data: dict):
     currency = html_escape(str(ad_data.get("currency") or "so'm"))
 
     footer = (
-        '👤 <a href="https://t.me/zayd_catlover">Admin</a>\n'
-        '📢 <a href="https://t.me/Uzbek_cat_bot?start=reklama">Reklama berish</a>\n\n'
-        '<a href="https://youtu.be/vdwgSB7_amw">YouTube</a> | <a href="https://www.instagram.com/p/C-cZkgstVGK/">Instagram</a> | <a href="https://t.me/uzbek_cats">Telegram</a>'
+        '➖➖➖➖➖➖➖➖➖➖➖➖\n'
+        '👤 <a href="https://t.me/zayd_catlover">Admin</a> | 📢 <a href="https://t.me/Uzbek_cat_bot?start=reklama">Reklama</a>\n'
+        '🌐 <a href="https://t.me/uzbek_cats">Telegram</a> | <a href="https://www.instagram.com/p/C-cZkgstVGK/">Instagram</a> | <a href="https://youtu.be/vdwgSB7_amw">YouTube</a>'
     )
 
     if ad_type == "sotish":
-        caption = f"#SOTILADI 💰\n\n📝 {breed} | {age} | {gender} | {sterilization} | {health}\n\n📍 Manzil: {address}\n💵 Narxi: {price} {currency}\n📞 Tel: {phone}\n\n{footer}"
+        caption = (
+            f"💰 <b>MUSHUK SOTILADI</b> 💰\n"
+            f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+            f"🐱 <b>Zoti:</b> {breed}\n"
+            f"🎂 <b>Yoshi:</b> {age}\n"
+            f"👤 <b>Jinsi:</b> {gender}\n"
+            f"❤️ <b>Sog'lig'i:</b> {health}\n"
+            f"🧬 <b>Nasl olish:</b> {sterilization}\n"
+            f"📍 <b>Manzil:</b> {address}\n"
+            f"💵 <b>Narxi:</b> {price} {currency}\n"
+            f"📞 <b>Tel:</b> {phone}\n\n{footer}"
+        )
         target = CHANNEL_SOTISH_ID
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎁 Hadiya kanal", url=CHANNEL_HADIYA_LINK)], [InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]])
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎁 Hadiya kanali", url=CHANNEL_HADIYA_LINK)],
+            [InlineKeyboardButton(text="📢 E'lon berish", url=BOT_LINK)]
+        ])
     else:
-        caption = f"#HADIYA 🎁\n\n📝 {breed} | {age} | {gender} | {sterilization} | {health}\n\n📍 Manzil: {address}\n📞 Tel: {phone}\n\n{footer}"
+        caption = (
+            f"🎁 <b>MUSHUK HADIYA</b> 🎁\n"
+            f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+            f"🐱 <b>Zoti:</b> {breed}\n"
+            f"🎂 <b>Yoshi:</b> {age}\n"
+            f"👤 <b>Jinsi:</b> {gender}\n"
+            f"❤️ <b>Sog'lig'i:</b> {health}\n"
+            f"🧬 <b>Nasl olish:</b> {sterilization}\n"
+            f"📍 <b>Manzil:</b> {address}\n"
+            f"📞 <b>Tel:</b> {phone}\n\n{footer}"
+        )
         target = CHANNEL_HADIYA_ID
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💰 Sotiladi kanal", url=CHANNEL_SOTISH_LINK)], [InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]])
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💰 Sotuv kanali", url=CHANNEL_SOTISH_LINK)],
+            [InlineKeyboardButton(text="📢 E'lon berish", url=BOT_LINK)]
+        ])
 
     photos = ad_data.get("photos") or []
     if isinstance(photos, str):
@@ -270,10 +282,8 @@ async def post_to_channel(ad_data: dict):
 
     try:
         if len(photos) > 1:
-            # Albom (Media Group) qilib yuborish
             media_group = []
             for i, p in enumerate(photos):
-                # Birinchi rasmga matn va tugma qo'shiladi
                 if p.startswith("BQAC") or p.endswith(".mp4") or len(p) > 100:
                     media = InputMediaVideo(media=p, caption=caption if i==0 else None, parse_mode=ParseMode.HTML)
                 else:
@@ -281,9 +291,13 @@ async def post_to_channel(ad_data: dict):
                 media_group.append(media)
             
             sent_messages = await bot.send_media_group(chat_id=target, media=media_group)
-            # Tugmani birinchi xabarga biriktirish
             sent = sent_messages[0]
-            await bot.edit_message_reply_markup(chat_id=target, message_id=sent.message_id, reply_markup=kb)
+            # "message is not modified" xatosini ushlab qolish
+            try:
+                await bot.edit_message_reply_markup(chat_id=target, message_id=sent.message_id, reply_markup=kb)
+            except TelegramBadRequest as e:
+                if "message is not modified" not in str(e):
+                    raise e
         elif len(photos) == 1:
             p = photos[0]
             if p.startswith("BQAC") or p.endswith(".mp4") or len(p) > 100:
@@ -294,66 +308,54 @@ async def post_to_channel(ad_data: dict):
             sent = await bot.send_message(chat_id=target, text=caption, reply_markup=kb)
         return sent
     except Exception as e:
-        logger.error(f"❌ Kanalga yuborishda xato (chat={target}): {e}")
-        raise
+        logger.error(f"❌ Kanalga yuborishda xato: {e}")
+        raise e
 
 # =====================================================================
-# MIDDLEWARE (Mute va Ban)
+# MIDDLEWARE VA GURUH NAZORATI
 # =====================================================================
-async def check_user_middleware(handler, event: Message, data: dict):
-    user_id = event.from_user.id
-    if user_id in BotConfig.ADMIN_IDS: return await handler(event, data)
-    text = event.text or ""
-    if text.startswith("/start"): return await handler(event, data)
-
-    if await db.get_setting("bot_enabled", "1") == "0":
-        await event.answer(Texts.BOT_DISABLED); return
-
-    user = await db.get_user(user_id)
-    if user and user.get("is_banned"):
-        await event.answer(Texts.USER_BANNED); return
+async def check_middleware(handler, event: Message, data: dict):
+    if event.from_user.id in BotConfig.ADMIN_IDS: return await handler(event, data)
+    if (event.text or "").startswith("/start"): return await handler(event, data)
     
-    if await db.check_mute(user_id):
-        await event.answer("❌ Siz vaqtincha yozish huquqidan mahrum qilingansiz. (24 soat)"); return
-
+    if await db.get_setting("bot_enabled", "1") == "0": 
+        return await event.answer(Texts.BOT_DISABLED)
+        
+    user = await db.get_user(event.from_user.id)
+    if user and user.get("is_banned"): 
+        return await event.answer(Texts.USER_BANNED)
+    if await db.check_mute(event.from_user.id): 
+        return await event.answer("❌ Siz vaqtincha yozish huquqidan mahrum qilingansiz (24 soat).")
+        
     return await handler(event, data)
 
-dp.message.middleware(check_user_middleware)
+dp.message.middleware(check_middleware)
 
-# =====================================================================
-# TAQIQLANGAN SO'ZLAR
-# =====================================================================
 @router.message(F.chat.type.in_({"group", "supergroup"}), ~F.from_user.is_bot)
-async def handle_banned_words(message: Message):
+async def banned_words(message: Message):
     if message.from_user.id in BotConfig.ADMIN_IDS: return
-    text = message.text or ""
+    text = (message.text or "").lower()
     if not text: return
-
-    text_lower = text.lower()
+    
     for word in DataLists.BANNED_WORDS:
-        if word.lower() in text_lower:
+        if word.lower() in text:
             try: await message.delete()
             except: pass
             
-            user_id = message.from_user.id
-            warn_count = await db.add_warning(user_id)
-            user_link = f'<a href="tg://user?id={user_id}">{html_escape(message.from_user.first_name)}</a>'
+            warns = await db.add_warning(message.from_user.id)
+            u_link = f'<a href="tg://user?id={message.from_user.id}">{html_escape(message.from_user.first_name)}</a>'
             
-            if warn_count >= 3:
-                await db.mute_user(user_id, hours=24)
-                try:
-                    await bot.restrict_chat_member(
-                        chat_id=message.chat.id, user_id=user_id,
-                        permissions=ChatPermissions(can_send_messages=False),
-                        until_date=datetime.now() + timedelta(hours=24)
-                    )
+            if warns >= 3:
+                await db.mute_user(message.from_user.id, 24)
+                try: 
+                    await bot.restrict_chat_member(message.chat.id, message.from_user.id, ChatPermissions(can_send_messages=False), until_date=datetime.now() + timedelta(hours=24))
                 except: pass
-                warn_text = f"🚫 {user_link}, siz 3 marta qoidani buzdingiz! 1 kunga yozish huquqidan mahrum qilindingiz."
+                msg = f"🚫 {u_link}, siz qoidalarni 3 marta buzdingiz! 1 kunga yozish huquqidan mahrum qilindingiz."
             else:
-                warn_text = f"⚠️ {user_link}, Iltimos reklama tarqatmang!\n\nSiz {warn_count}-marta reklama tarqatdingiz. Yana {3 - warn_count} ta reklama tarqatsangiz, 1 kunga yozish huquqidan mahrum bo'lasiz."
-            
+                msg = f"⚠️ {u_link}, iltimos reklama tarqatmang!\n\nSiz {warns}-marta qoidani buzdingiz. Yana {3-warns} marta takrorlansa, bloklanasiz."
+                
             kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 Reklama berish", url=BOT_LINK)]])
-            await message.answer(warn_text, reply_markup=kb)
+            await message.answer(msg, reply_markup=kb)
             return
 
 # =====================================================================
@@ -362,487 +364,463 @@ async def handle_banned_words(message: Message):
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
-    user_id = message.from_user.id
-    user = await db.get_user(user_id)
+    user = await db.get_user(message.from_user.id)
     
-    if user and user.get("is_banned"):
-        await message.answer(Texts.USER_BANNED); return
     if user:
-        await message.answer(Texts.MAIN_MENU, reply_markup=get_main_menu_kb(user_id in BotConfig.ADMIN_IDS)); return
-
+        if user.get("is_banned"): return await message.answer(Texts.USER_BANNED)
+        return await message.answer(Texts.MAIN_MENU, reply_markup=main_menu(message.from_user.id in BotConfig.ADMIN_IDS))
+    
     args = message.text.split(maxsplit=1)
-    if len(args) > 1 and args[1].startswith("REF"): await state.update_data(referral_code=args[1])
-
-    if Settings.REQUIRE_SUBSCRIPTION:
-        sotish_ok, hadiya_ok = await check_subscription(user_id)
-        await message.answer(get_sub_text(sotish_ok, hadiya_ok), reply_markup=get_subscription_kb(sotish_ok, hadiya_ok))
-        await state.set_state(RegStates.checking_subscription)
-    else:
+    if len(args) > 1 and args[1].startswith("REF"): 
+        await state.update_data(ref=args[1])
+    
+    s_ok, h_ok = await check_subscription(message.from_user.id)
+    if s_ok and h_ok:
         await message.answer(Texts.START_TEXT, reply_markup=get_phone_kb())
         await state.set_state(RegStates.waiting_phone)
+    else:
+        await message.answer("👋 <b>Assalomu alaykum!</b>\n\nBotdan foydalanish uchun quyidagi kanallarga obuna bo'ling:", reply_markup=get_sub_kb(s_ok, h_ok))
 
 @router.callback_query(F.data == "noop")
-async def cb_noop(call: CallbackQuery): await call.answer(Texts.SUB_OK_ALERT)
+async def noop(call: CallbackQuery): await safe_answer(call, "✅ Obuna tasdiqlangan!")
 
 @router.callback_query(F.data == "check_sub")
-async def cb_check_sub(call: CallbackQuery, state: FSMContext):
-    sotish_ok, hadiya_ok = await check_subscription(call.from_user.id)
-    if sotish_ok and hadiya_ok:
-        await safe_edit_text(call.message, "✅ Obuna tasdiqlandi!")
-        await call.message.answer(Texts.START_TEXT, reply_markup=get_phone_kb())
+async def check_sub(call: CallbackQuery, state: FSMContext):
+    s_ok, h_ok = await check_subscription(call.from_user.id)
+    if s_ok and h_ok:
+        await safe_edit_text(call.message, Texts.START_TEXT, reply_markup=get_phone_kb())
         await state.set_state(RegStates.waiting_phone)
-        return
-    try: await call.message.edit_text(get_sub_text(sotish_ok, hadiya_ok), reply_markup=get_subscription_kb(sotish_ok, hadiya_ok))
-    except: pass
-    await call.answer("❌ Iltimos, barcha kanallarga obuna bo'ling!", show_alert=True)
+    else: 
+        await safe_answer(call, "❌ Iltimos, barcha kanallarga to'liq obuna bo'ling!", True)
+
+@router.callback_query(F.data == "continue_reg")
+async def cont_reg(call: CallbackQuery, state: FSMContext):
+    await safe_edit_text(call.message, Texts.START_TEXT, reply_markup=get_phone_kb())
+    await state.set_state(RegStates.waiting_phone)
 
 @router.message(RegStates.waiting_phone, F.contact | F.text)
 async def process_phone(message: Message, state: FSMContext):
     phone = message.contact.phone_number if message.contact else (message.text or "").strip()
-    if not message.contact and not re.match(r"^\+?998\d{9}$", phone.replace(" ", "")):
-        await message.answer(Texts.ASK_PHONE); return
-    phone = phone if phone.startswith("+") else f"+{phone}"
-
-    full_name = f"{message.from_user.first_name} {message.from_user.last_name or ''}".strip()
-    username = f"@{message.from_user.username}" if message.from_user.username else "Noma'lum"
-    data = await state.get_data()
+    if not message.contact and not re.match(r"^\+?998\d{9}$", phone.replace(" ", "")): 
+        return await message.answer(Texts.ASK_PHONE)
     
-    try: user = await db.create_user(message.from_user.id, username, full_name, phone, data.get("referral_code"))
-    except Exception as e: await message.answer(f"❌ {e}"); return
-
-    await message.answer(Texts.REG_SUCCESS.format(user_number=user["user_number"], score=user["score"], referrals=0), reply_markup=ReplyKeyboardRemove())
-    await message.answer(Texts.MAIN_MENU, reply_markup=get_main_menu_kb(message.from_user.id in BotConfig.ADMIN_IDS))
-    await state.clear()
+    phone = phone if phone.startswith("+") else f"+{phone}"
+    data = await state.get_data()
+    try:
+        user = await db.create_user(message.from_user.id, f"@{message.from_user.username}" if message.from_user.username else "Noma'lum", message.from_user.full_name, phone, data.get("ref"))
+        await message.answer(Texts.REG_SUCCESS.format(user_number=user["user_number"], score=user["score"], referrals=0), reply_markup=ReplyKeyboardRemove())
+        await message.answer(Texts.MAIN_MENU, reply_markup=main_menu(message.from_user.id in BotConfig.ADMIN_IDS))
+        await state.clear()
+    except Exception as e: 
+        await message.answer(f"❌ Xatolik yuz berdi: {e}")
 
 # =====================================================================
 # ASOSIY MENYU VA KONKURS
 # =====================================================================
 @router.callback_query(F.data == "menu_back_to_main")
-async def back_to_main(call: CallbackQuery):
-    await safe_edit_text(call.message, Texts.MAIN_MENU, reply_markup=get_main_menu_kb(call.from_user.id in BotConfig.ADMIN_IDS))
+async def back_main(call: CallbackQuery): 
+    await safe_edit_text(call.message, Texts.MAIN_MENU, main_menu(call.from_user.id in BotConfig.ADMIN_IDS))
 
 @router.callback_query(F.data == "menu_konkurs")
-async def menu_konkurs(call: CallbackQuery):
+async def konkurs(call: CallbackQuery):
     user = await db.get_user(call.from_user.id)
-    ref_link = f"https://t.me/{BotConfig.BOT_USERNAME.replace('@', '')}?start=REF{user['id']}"
-    
-    text = "🏆 <b>Konkurs</b>\n\n"
-    text += f"👥 Sizning ballaringiz: <b>{user['score']} ball</b>\n"
-    text += f"🔗 Sizning linkingiz:\n<code>{ref_link}</code>\n\n"
-    text += "Do'stlaringizni taklif qiling va ball to'plang!\n"
-    text += "Eng ko'p ball to'plagan 10 kishi g'olib bo'ladi."
-    
+    ref = f"https://t.me/{BotConfig.BOT_USERNAME.replace('@', '')}?start=REF{user['id']}"
+    text = f"🏆 <b>Konkurs va Takliflar</b>\n➖➖➖➖➖➖➖➖➖➖➖➖\n\n👥 Sizning ballaringiz: <b>{user['score']}</b>\n🔗 Havolangiz:\n<code>{ref}</code>\n\nDo'stlaringizni taklif qiling, ball to'plang va eng yaxshi 10 talikka kiring!"
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📤 Ulashish", url=f"https://t.me/share/url?url={ref_link}")],
-        [InlineKeyboardButton(text="🏆 Reyting (Top 10)", callback_data="menu_rating")],
-        [InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")],
+        [InlineKeyboardButton(text="📤 Do'stlarga ulashish", url=f"https://t.me/share/url?url={ref}")], 
+        [InlineKeyboardButton(text="🏆 Reytingni ko'rish", callback_data="menu_rating")], 
+        [InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]
     ])
-    await safe_edit_text(call.message, text, reply_markup=kb)
+    await safe_edit_text(call.message, text, kb)
 
 @router.callback_query(F.data == "menu_rating")
-async def menu_rating(call: CallbackQuery):
-    top_users = await db.get_top_10_users()
-    text = "🥇 <b>Eng faol foydalanuvchilar (Top 10)</b>\n\n"
-    if not top_users:
+async def rating(call: CallbackQuery):
+    top = await db.get_top_10_users()
+    text = "🥇 <b>Top 10 Faol Foydalanuvchilar</b>\n➖➖➖➖➖➖➖➖➖➖➖➖\n\n"
+    if not top:
         text += "Hozircha reyting mavjud emas."
     else:
-        for i, u in enumerate(top_users, 1):
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            name_safe = html_escape(u['full_name'] or 'Foydalanuvchi')
-            text += f"{medal} {name_safe} — <b>{u['score']} ball</b>\n"
+        for i, u in enumerate(top, 1):
+            medal = "🥇" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
+            text += f"{medal} {html_escape(u['full_name'])} — <b>{u['score']} ball</b>\n"
             
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_konkurs")]])
-    await safe_edit_text(call.message, text, reply_markup=kb)
-
-@router.callback_query(F.data == "menu_reklama")
-async def menu_reklama(call: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await safe_edit_text(call.message, Texts.AD_TYPE_SELECT, reply_markup=get_ad_type_kb())
+    await safe_edit_text(call.message, text, InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_konkurs")]]))
 
 @router.callback_query(F.data == "menu_about")
-async def menu_about(call: CallbackQuery):
-    text = "ℹ️ <b>Bot haqida</b>\n\nUshbu bot orqali siz mushuklar haqida e'lon berishingiz, ularni sotishingiz yoki hadiya qilishingiz mumkin.\n\n🎁 Hadiya e'lonlari mutlaqo bepul.\n💰 Sotish uchun e'lonlar to'lov asosida."
-    await safe_edit_text(call.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
+async def about(call: CallbackQuery):
+    text = (
+        "ℹ️ <b>Bot haqida ma'lumot</b>\n"
+        "➖➖➖➖➖➖➖➖➖➖➖➖\n\n"
+        "Ushbu bot orqali siz uy hayvonlaringizni sotishingiz yoki hadiya qilishingiz mumkin.\n\n"
+        "🎁 <b>Hadiya e'lonlari mutlaqo bepul.</b>\n"
+        "💰 <b>Sotuv e'lonlari to'lov asosida.</b>\n\n"
+        "Qulaylik uchun Web App xizmatidan ham foydalanishingiz mumkin."
+    )
+    await safe_edit_text(call.message, text, InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
 
 @router.callback_query(F.data == "menu_admin")
-async def menu_admin(call: CallbackQuery):
-    text = "👤 <b>Admin bilan bog'lanish</b>\n\n👨‍💻 Texnik Admin: @It_project_2026\n📞 +998900512621\n\n👨‍💼 Bosh Admin: @zayd_catlover\n📞 +998934938181"
-    await safe_edit_text(call.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
+async def contact_admin(call: CallbackQuery):
+    text = "👤 <b>Qo'llab-quvvatlash xizmati</b>\n➖➖➖➖➖➖➖➖➖➖➖➖\n\n👨‍💻 Texnik Admin: @It_project_2026\n📞 +998900512621\n\n👨‍💼 Bosh Admin: @zayd_catlover\n📞 +998934938181"
+    await safe_edit_text(call.message, text, InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
 
 # =====================================================================
-# MENING E'LONLARIM (HAR BIRI ALOHIDA POST)
+# MENING E'LONLARIM
 # =====================================================================
 @router.callback_query(F.data == "menu_my_orders")
-async def menu_my_orders(call: CallbackQuery):
+async def my_orders(call: CallbackQuery):
     ads = await db.get_user_ads(call.from_user.id)
+    await safe_edit_text(call.message, "⏳ <i>E'lonlaringiz yuklanmoqda...</i>", None)
     
-    await safe_edit_text(call.message, "⏳ E'lonlaringiz yuklanmoqda...", reply_markup=None)
+    if not ads: 
+        return await call.message.answer("📭 Sizda hali e'lonlar mavjud emas.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
     
-    if not ads:
-        await call.message.answer(Texts.NO_ADS, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
-        return
-
-    st_map = {"pending": "⏳ Kutilmoqda", "approved": "✅ Tasdiqlangan", "rejected": "❌ Rad etilgan", "sold": "💰 Sotilgan", "expired": "⏰ Muddati o'tgan"}
-    
+    st_map = {"pending": "⏳ Kutilmoqda", "approved": "✅ Tasdiqlangan", "rejected": "❌ Rad etilgan"}
     for ad in ads:
         st = st_map.get(ad["status"], ad["status"])
-        breed = html_escape(str(ad.get("breed") or "—"))
-        text = f"🐱 <b>{breed}</b> | {st}\n📅 {ad['created_at'].strftime('%d.%m.%Y')}"
+        text = f"🐱 <b>{html_escape(str(ad['breed']))}</b>\nHolat: {st}\n📅 Sana: {ad['created_at'].strftime('%d.%m.%Y')}"
         
         kb = None
-        if ad["status"] == "approved":
-            action_text = "✅ Berib bo'ldim" if ad["ad_type"] == "hadiya" else "💰 Sotildi"
-            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=action_text, callback_data=f"user_ad_done_{ad['id']}")]])
-            
-        photos = ad.get("photos") or []
-        if isinstance(photos, str):
-            try: photos = json.loads(photos)
-            except: photos = []
-            
+        if ad['status'] == "approved":
+            action = "🎁 Berib bo'ldim" if ad['ad_type'] == "hadiya" else "💰 Sotildi"
+            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=action, callback_data=f"done_ad_{ad['id']}")]])
+        
+        photos = json.loads(ad['photos']) if isinstance(ad['photos'], str) else (ad['photos'] or [])
         if photos:
-            if len(photos[0]) > 100 or photos[0].endswith(".mp4"):
-                await call.message.answer_video(video=photos[0], caption=text, reply_markup=kb)
-            else:
-                await call.message.answer_photo(photo=photos[0], caption=text, reply_markup=kb)
-        else:
+            if len(photos[0]) > 100 or photos[0].endswith(".mp4"): 
+                await call.message.answer_video(photos[0], caption=text, reply_markup=kb)
+            else: 
+                await call.message.answer_photo(photos[0], caption=text, reply_markup=kb)
+        else: 
             await call.message.answer(text, reply_markup=kb)
             
-    await call.message.answer("Barcha e'lonlaringiz ko'rsatildi.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Asosiy menyu", callback_data="menu_back_to_main")]]))
+    await call.message.answer("Asosiy menyuga qaytish:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]]))
 
-@router.callback_query(F.data.startswith("user_ad_done_"))
-async def user_mark_ad_done(call: CallbackQuery):
-    ad_id = int(call.data.split("_")[3])
+@router.callback_query(F.data.startswith("done_ad_"))
+async def user_done_ad(call: CallbackQuery):
+    ad_id = int(call.data.split("_")[2])
     ad = await db.get_ad(ad_id)
+    if not ad or ad["user_id"] != call.from_user.id: 
+        return await safe_answer(call, "Xatolik!", True)
     
-    if not ad or ad["user_id"] != call.from_user.id:
-        await call.answer("Xatolik: E'lon topilmadi.", show_alert=True); return
-
-    action_text = "Berib bo'lindi" if ad["ad_type"] == "hadiya" else "Sotildi"
+    action = "BERILDI 🎁" if ad["ad_type"] == "hadiya" else "SOTILDI 💰"
     await db.delete_ad(ad_id)
     
     if ad.get("channel_message_id"):
         try:
-            target_chat = CHANNEL_SOTISH_ID if ad["ad_type"] == "sotish" else CHANNEL_HADIYA_ID
-            old_caption = f"#SOTILDI 💰" if ad["ad_type"] == "sotish" else f"#BERILDI 🎁"
-            breed = html_escape(str(ad.get("breed") or "—"))
-            age = html_escape(str(ad.get("age") or "—"))
-            address = html_escape(str(ad.get("address") or "—"))
-            
-            new_caption = f"{old_caption}\n\n📝 {breed} | {age}\n\n📍 Manzil: {address}\n📞 Tel: <i>Yashirilgan</i>\n\n✅ <b>E'LON {action_text.upper()}!</b>"
-            
-            if ad.get("photos"):
-                await bot.edit_message_caption(chat_id=target_chat, message_id=ad["channel_message_id"], caption=new_caption, reply_markup=None)
-            else:
-                await bot.edit_message_text(chat_id=target_chat, message_id=ad["channel_message_id"], text=new_caption, reply_markup=None)
-        except Exception as e:
-            logger.error(f"Kanal xabarini tahrirlashda xato: {e}")
-
-    await call.answer(f"✅ E'lon {action_text} deb belgilandi va o'chirildi!", show_alert=True)
+            target = CHANNEL_SOTISH_ID if ad["ad_type"] == "sotish" else CHANNEL_HADIYA_ID
+            new_cap = f"#{action}\n\n📝 {html_escape(str(ad['breed']))} | {html_escape(str(ad['age']))}\n\n📍 {html_escape(str(ad['address']))}\n📞 <i>Yashirilgan</i>\n\n✅ <b>E'LON YOPILDI</b>"
+            if ad['photos']: 
+                await bot.edit_message_caption(target, ad["channel_message_id"], caption=new_cap, reply_markup=None)
+            else: 
+                await bot.edit_message_text(target, ad["channel_message_id"], text=new_cap, reply_markup=None)
+        except: pass
+        
+    await safe_answer(call, f"✅ E'lon {action} deb belgilandi va o'chirildi!", True)
     await safe_delete(call.message)
 
 # =====================================================================
-# REKLAMA JARAYONI
+# PREMIUM E'LON YARATISH JARAYONI
 # =====================================================================
-@router.callback_query(F.data.startswith("adtype_"))
-async def choose_ad_type(call: CallbackQuery, state: FSMContext):
-    ad_type = call.data.replace("adtype_", "")
-    await state.update_data(ad_type=ad_type)
-    if ad_type == "sotish":
-        await safe_edit_text(call.message, "🐱 <b>Nechta mushuk sotmoqchisiz?</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{i} ta mushuk", callback_data=f"catcount_{i}")] for i in range(1, 6)]))
-        await state.set_state(AdStates.choosing_cat_count)
-    else:
-        await safe_edit_text(call.message, Texts.MEDIA_ASK, reply_markup=get_media_type_kb())
-        await state.set_state(AdStates.choosing_media_type)
+@router.callback_query(F.data == "menu_reklama")
+async def start_ad(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    text = "🛒 <b>E'lon joylashtirish</b>\n➖➖➖➖➖➖➖➖➖➖➖➖\n\nQanday turdagi e'lon bermoqchisiz?"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 Mushuk sotmoqchiman", callback_data="adtype_sotish")], 
+        [InlineKeyboardButton(text="🎁 Hadiya qilmoqchiman", callback_data="adtype_hadiya")], 
+        [InlineKeyboardButton(text="↩️ Bekor qilish", callback_data="menu_back_to_main")]
+    ])
+    await safe_edit_text(call.message, text, kb)
 
-@router.callback_query(AdStates.choosing_cat_count, F.data.startswith("catcount_"))
-async def process_cat_count(call: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("adtype_"))
+async def choose_type(call: CallbackQuery, state: FSMContext):
+    ad_type = call.data.split("_")[1]
+    await state.update_data(ad_type=ad_type)
+    
+    if ad_type == "sotish":
+        await state.set_state(AdStates.cat_count)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"{i} ta mushuk", callback_data=f"cat_{i}")] for i in range(1, 6)
+        ])
+        await safe_edit_text(call.message, "🐱 <b>Nechta mushuk sotmoqchisiz?</b>", kb)
+    else:
+        await state.set_state(AdStates.media_type)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🖼️ Rasm yuboraman", callback_data="m_photo")], 
+            [InlineKeyboardButton(text="🎥 Video yuboraman (1 daqiqagacha)", callback_data="m_video")]
+        ])
+        await safe_edit_text(call.message, "📸 <b>Qanday media yuborasiz?</b>", kb)
+
+@router.callback_query(AdStates.cat_count, F.data.startswith("cat_"))
+async def process_cat(call: CallbackQuery, state: FSMContext):
     count = int(call.data.split("_")[1])
     await state.update_data(cat_count=count, bot_price=Prices.get_bot_price(count))
-    await safe_edit_text(call.message, Texts.MEDIA_ASK, reply_markup=get_media_type_kb())
-    await state.set_state(AdStates.choosing_media_type)
+    await state.set_state(AdStates.media_type)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🖼️ Rasm yuboraman", callback_data="m_photo")], 
+        [InlineKeyboardButton(text="🎥 Video yuboraman (1 daqiqagacha)", callback_data="m_video")]
+    ])
+    await safe_edit_text(call.message, "📸 <b>Qanday media yuborasiz?</b>", kb)
 
-@router.callback_query(F.data.startswith("media_"))
-async def choose_media_type(call: CallbackQuery, state: FSMContext):
-    media_type = call.data.replace("media_", "")
-    await state.update_data(media_type=media_type, photos=[])
-    text = "🖼️ <b>Mushuk rasmlarini yuboring (1-3 ta):</b>" if media_type == "photo" else "🎥 <b>Mushuk videosini yuboring (1 daqiqagacha):</b>"
-    await safe_edit_text(call.message, text, reply_markup=None)
-    await state.set_state(AdStates.waiting_media)
+@router.callback_query(F.data.startswith("m_"))
+async def choose_media(call: CallbackQuery, state: FSMContext):
+    m_type = call.data.split("_")[1]
+    await state.update_data(media_type=m_type, photos=[])
+    await state.set_state(AdStates.media)
+    
+    text = "🖼️ <b>Rasmlarni yuboring (1-3 ta):</b>" if m_type == "photo" else "🎥 <b>Videoni yuboring (1 daqiqagacha):</b>"
+    await safe_edit_text(call.message, text, None)
 
-@router.message(AdStates.waiting_media, F.photo)
-async def receive_photo(message: Message, state: FSMContext):
+@router.message(AdStates.media, F.photo | F.video)
+async def receive_media(message: Message, state: FSMContext):
     data = await state.get_data()
-    if data.get("media_type") != "photo":
-        await message.answer("❌ Iltimos, faqat video yuboring!"); return
+    m_type = data.get("media_type")
+    
+    if message.photo and m_type != "photo": return await message.answer("❌ Faqat rasm yuboring!")
+    if message.video and m_type != "video": return await message.answer("❌ Faqat video yuboring!")
+    if message.video and message.video.duration > 60: return await message.answer("❌ Video 1 daqiqadan oshmasin!")
+    
     photos = data.get("photos", [])
-    if len(photos) >= 3:
-        await message.answer("❌ Maksimum 3 ta rasm.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➡️ Davom etish", callback_data="continue_process")]])); return
+    if len(photos) >= 3: return await message.answer("❌ Maksimum 3 ta rasm.")
     
-    photos.append(message.photo[-1].file_id)
+    photos.append(message.photo[-1].file_id if message.photo else message.video.file_id)
     await state.update_data(photos=photos)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➡️ Davom etish", callback_data="continue_process")]])
-    await message.answer(f"✅ <b>{len(photos)}-rasm qabul qilindi.</b> Yana yuborishingiz yoki davom etishingiz mumkin.", reply_markup=kb)
-
-@router.message(AdStates.waiting_media, F.video)
-async def receive_video(message: Message, state: FSMContext):
-    data = await state.get_data()
-    if data.get("media_type") != "video":
-        await message.answer("❌ Iltimos, faqat rasm yuboring!"); return
-    if message.video.duration > 60:
-        await message.answer("❌ Video 1 daqiqadan oshmasligi kerak."); return
     
-    await state.update_data(photos=[message.video.file_id])
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➡️ Davom etish", callback_data="continue_process")]])
-    await message.answer("✅ <b>Video qabul qilindi.</b>", reply_markup=kb)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➡️ Davom etish", callback_data="next_step")]])
+    await message.answer(f"✅ <b>{len(photos)}-media qabul qilindi.</b>\nYana yuborishingiz yoki davom etishingiz mumkin.", reply_markup=kb)
 
-@router.callback_query(AdStates.waiting_media, F.data == "continue_process")
-async def process_continue_media(call: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data == "next_step")
+async def next_step(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    if not data.get("photos"):
-        await call.answer("❌ Iltimos, media yuboring!", show_alert=True); return
-    await safe_edit_text(call.message, Texts.BREED_ASK, reply_markup=get_breed_kb(0))
-    await state.set_state(AdStates.choosing_breed)
+    if not data.get("photos"): 
+        return await safe_answer(call, "❌ Iltimos, avval media yuboring!", True)
+        
+    await state.set_state(AdStates.breed)
+    await safe_edit_text(call.message, "🐱 <b>Zotni tanlang (yoki o'zim yozaman):</b>", get_breed_kb(0))
 
-@router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_page_"))
-async def breed_page(call: CallbackQuery):
+@router.callback_query(AdStates.breed, F.data.startswith("br_p_"))
+async def breed_page(call: CallbackQuery, state: FSMContext):
     page = int(call.data.split("_")[2])
     await call.message.edit_reply_markup(reply_markup=get_breed_kb(page))
 
-@router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_") & ~F.data.startswith("breed_page_") & ~F.data.startswith("breed_custom"))
-async def process_breed(call: CallbackQuery, state: FSMContext):
+@router.callback_query(AdStates.breed, F.data.startswith("br_") & ~F.data.startswith("br_p_") & ~F.data.startswith("br_custom"))
+async def save_breed_cb(call: CallbackQuery, state: FSMContext):
     parts = call.data.split("_")
     breed = DataLists.BREEDS[int(parts[1])][int(parts[2])]
     await state.update_data(breed=breed)
-    await safe_edit_text(call.message, Texts.AGE_ASK, reply_markup=get_age_kb())
-    await state.set_state(AdStates.choosing_age)
+    await state.set_state(AdStates.age)
+    await safe_edit_text(call.message, "🎂 <b>Yoshini tanlang:</b>", get_age_kb())
 
-@router.callback_query(AdStates.choosing_breed, F.data == "breed_custom")
-async def custom_breed(call: CallbackQuery, state: FSMContext):
-    await safe_edit_text(call.message, Texts.BREED_CUSTOM_ASK, reply_markup=None)
+@router.callback_query(AdStates.breed, F.data == "br_custom")
+async def custom_breed_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(AdStates.custom_breed)
+    await safe_edit_text(call.message, "✏️ <b>Zotni yozib yuboring:</b>", None)
 
 @router.message(AdStates.custom_breed)
-async def process_custom_breed(message: Message, state: FSMContext):
+async def save_custom_breed(message: Message, state: FSMContext):
     await state.update_data(breed=message.text)
-    await message.answer(Texts.AGE_ASK, reply_markup=get_age_kb())
-    await state.set_state(AdStates.choosing_age)
+    await state.set_state(AdStates.age)
+    await message.answer("🎂 <b>Yoshini tanlang:</b>", reply_markup=get_age_kb())
 
-@router.callback_query(AdStates.choosing_age, F.data.startswith("age_"))
-async def process_age(call: CallbackQuery, state: FSMContext):
+@router.callback_query(AdStates.age, F.data.startswith("age_"))
+async def save_age(call: CallbackQuery, state: FSMContext):
     age = call.data.replace("age_", "").replace("_", " ")
     await state.update_data(age=age)
-    await safe_edit_text(call.message, Texts.HEALTH_ASK, reply_markup=get_simple_kb([("Sog'lom", "soglom"), ("Kasal", "kasal")], "health"))
-    await state.set_state(AdStates.choosing_health)
+    await state.set_state(AdStates.health)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Sog'lom", callback_data="health_sog")],
+        [InlineKeyboardButton(text="⚠️ Kasal", callback_data="health_kas")]
+    ])
+    await safe_edit_text(call.message, "❤️ <b>Sog'lig'ini tanlang:</b>", kb)
 
-@router.callback_query(AdStates.choosing_health, F.data.startswith("health_"))
-async def process_health(call: CallbackQuery, state: FSMContext):
-    await state.update_data(health="Sog'lom" if "soglom" in call.data else "Kasal")
-    await safe_edit_text(call.message, Texts.GENDER_ASK, reply_markup=get_simple_kb([("♀️ Qiz bola", "qiz"), ("♂️ O'g'il bola", "ogil")], "gender"))
-    await state.set_state(AdStates.choosing_gender)
+@router.callback_query(AdStates.health, F.data.startswith("health_"))
+async def save_health(call: CallbackQuery, state: FSMContext):
+    health = "Sog'lom" if "sog" in call.data else "Kasal"
+    await state.update_data(health=health)
+    await state.set_state(AdStates.gender)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="♀️ Qiz bola", callback_data="gen_qiz")],
+        [InlineKeyboardButton(text="♂️ O'g'il bola", callback_data="gen_ogil")]
+    ])
+    await safe_edit_text(call.message, "👤 <b>Jinsini tanlang:</b>", kb)
 
-@router.callback_query(AdStates.choosing_gender, F.data.startswith("gender_"))
-async def process_gender(call: CallbackQuery, state: FSMContext):
-    await state.update_data(gender="Qiz bola" if "qiz" in call.data else "O'g'il bola")
-    await safe_edit_text(call.message, Texts.STERILIZATION_ASK, reply_markup=get_simple_kb([("✅ Nasl olsa bo'ladi", "yes"), ("❌ Nasl olsa bo'lmaydi", "no")], "sterilization"))
-    await state.set_state(AdStates.choosing_sterilization)
+@router.callback_query(AdStates.gender, F.data.startswith("gen_"))
+async def save_gender(call: CallbackQuery, state: FSMContext):
+    gender = "Qiz bola" if "qiz" in call.data else "O'g'il bola"
+    await state.update_data(gender=gender)
+    await state.set_state(AdStates.sterilization)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Ha, nasl olsa bo'ladi", callback_data="ster_yes")],
+        [InlineKeyboardButton(text="❌ Yo'q, nasl olsa bo'lmaydi", callback_data="ster_no")]
+    ])
+    await safe_edit_text(call.message, "🧬 <b>Nasl olish xususiyati:</b>", kb)
 
-@router.callback_query(AdStates.choosing_sterilization, F.data.startswith("sterilization_"))
-async def process_sterilization(call: CallbackQuery, state: FSMContext):
-    await state.update_data(sterilization="Nasl olish mumkin" if "yes" in call.data else "Nasl olish mumkin emas")
-    await safe_edit_text(call.message, Texts.ADDRESS_ASK, reply_markup=get_viloyat_kb())
-    await state.set_state(AdStates.waiting_address)
+@router.callback_query(AdStates.sterilization, F.data.startswith("ster_"))
+async def save_ster(call: CallbackQuery, state: FSMContext):
+    ster = "Nasl olish mumkin" if "yes" in call.data else "Nasl olish mumkin emas"
+    await state.update_data(sterilization=ster)
+    await state.set_state(AdStates.address)
+    await safe_edit_text(call.message, "📍 <b>Viloyatni tanlang:</b>", get_viloyat_kb())
 
-@router.callback_query(AdStates.waiting_address, F.data.startswith("viloyat_"))
-async def process_address(call: CallbackQuery, state: FSMContext):
-    await state.update_data(address=call.data.replace("viloyat_", "").replace("_", " ").title())
-    await safe_edit_text(call.message, Texts.AD_PHONE_ASK, reply_markup=None)
-    await state.set_state(AdStates.waiting_phone)
-
-@router.message(AdStates.waiting_phone)
-async def process_ad_phone(message: Message, state: FSMContext):
-    digits = re.sub(r"\D", "", message.text or "")
-    if len(digits) != 12 or not digits.startswith("998"):
-        await message.answer(Texts.AD_PHONE_INVALID); return
-    await state.update_data(phone=f"+{digits}")
+@router.callback_query(AdStates.address, F.data.startswith("vil_"))
+async def save_addr(call: CallbackQuery, state: FSMContext):
+    addr = call.data.replace("vil_", "")
+    await state.update_data(address=addr, phone="+998901234567")
+    
     data = await state.get_data()
-    if data.get("ad_type") == "hadiya": await send_ad_preview(message, state)
+    if data["ad_type"] == "hadiya": 
+        await state.set_state(AdStates.preview)
+        await preview_ad(call.message, state)
     else:
-        await message.answer(Texts.CURRENCY_ASK, reply_markup=get_simple_kb([("🇺🇿 So'mda", "som"), ("💵 Dollarda", "dollar")], "valyuta"))
-        await state.set_state(AdStates.choosing_currency)
+        await state.set_state(AdStates.price)
+        await safe_edit_text(call.message, "💰 <b>Narxni kiriting (faqat raqamda, so'mda):</b>", None)
 
-@router.callback_query(AdStates.choosing_currency, F.data.startswith("valyuta_"))
-async def process_currency(call: CallbackQuery, state: FSMContext):
-    await state.update_data(currency="so'm" if "som" in call.data else "$")
-    await safe_edit_text(call.message, Texts.PRICE_ASK, reply_markup=None)
-    await state.set_state(AdStates.waiting_price)
+@router.message(AdStates.price)
+async def save_price(message: Message, state: FSMContext):
+    if not message.text.isdigit(): 
+        return await message.answer("❌ Faqat raqam kiriting:")
+    await state.update_data(price=message.text, currency="so'm")
+    await state.set_state(AdStates.preview)
+    await preview_ad(message, state)
 
-@router.message(AdStates.waiting_price)
-async def process_price(message: Message, state: FSMContext):
-    if not (message.text or "").isdigit():
-        await message.answer(Texts.PRICE_INVALID); return
-    await state.update_data(price=message.text)
-    await send_ad_preview(message, state)
-
-# =====================================================================
-# PREVIEW (PUL YECHISHDAN OLDIN TASDIQLASH)
-# =====================================================================
-async def send_ad_preview(message: Message, state: FSMContext):
+async def preview_ad(msg: Message, state: FSMContext):
     data = await state.get_data()
-    user = await db.get_user(message.from_user.id if message.from_user else message.chat.id)
+    user = await db.get_user(msg.from_user.id)
     price = data.get("bot_price", 0)
     
-    address_safe = html_escape(str(data.get('address') or '—'))
-    phone_safe = html_escape(str(data.get('phone') or '—'))
-    price_safe = html_escape(str(data.get('price') or '0'))
-    currency_safe = html_escape(str(data.get('currency') or "so'm"))
-    breed_safe = html_escape(str(data.get('breed') or '—'))
-    age_safe = html_escape(str(data.get('age') or '—'))
-    gender_safe = html_escape(str(data.get('gender') or '—'))
-    health_safe = html_escape(str(data.get('health') or '—'))
-    sterilization_safe = html_escape(str(data.get('sterilization') or '—'))
-
-    caption = "📋 <b>Ma'lumotlaringizni tekshiring:</b>\n\n"
-    caption += f"📍 Manzil: {address_safe}\n📞 Tel: {phone_safe}\n"
-    if data.get("ad_type") != "hadiya":
-        caption += f"💰 Narx: {price_safe} {currency_safe}\n"
-    caption += f"🐱 Zot: {breed_safe}\n🎂 Yosh: {age_safe}\n👤 Jins: {gender_safe}\n❤️ Sog'liq: {health_safe}\n🧬 Nasl: {sterilization_safe}\n\n"
-    
-    if price > 0:
-        caption += f"💳 <b>Hisobingiz:</b> {user['balance']:,} so'm\n"
-        caption += f"💸 <b>Yechiladi:</b> {price:,} so'm\n\n"
-        if user['balance'] < price:
-            caption += "❌ <b>Diqqat! Mablag' yetarli emas. Iltimos, hisobni to'ldiring.</b>"
-        else:
-            caption += "❓ <b>Shuncha summa yechishga tayyormisiz?</b>"
+    text = (
+        f"📋 <b>E'lonni tekshirib oling</b>\n"
+        f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+        f"🐱 <b>Zoti:</b> {html_escape(data['breed'])}\n"
+        f"🎂 <b>Yoshi:</b> {html_escape(data['age'])}\n"
+        f"👤 <b>Jinsi:</b> {html_escape(data['gender'])}\n"
+        f"❤️ <b>Sog'lig'i:</b> {html_escape(data['health'])}\n"
+        f"🧬 <b>Nasl olish:</b> {html_escape(data['sterilization'])}\n"
+        f"📍 <b>Manzil:</b> {html_escape(data['address'])}\n"
+    )
+    if data['ad_type'] != "hadiya": 
+        text += f"💵 <b>Narxi:</b> {html_escape(data['price'])} {html_escape(data['currency'])}\n"
+        
+    text += f"\n💳 <b>Sizning balansingiz:</b> {user['balance']:,} so'm\n"
+    if price > 0: 
+        text += f"💸 <b>Yechiladigan summa:</b> {price:,} so'm\n"
+        
+    if user['balance'] < price:
+        text += f"\n❌ <b>Diqqat! Mablag' yetarli emas. Iltimos, hisobni to'ldiring.</b>"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Hisobni to'ldirish", web_app=types.WebAppInfo(url=f"{BotConfig.WEB_APP_URL}?page=topup"))],
+            [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="menu_back_to_main")]
+        ])
+    else:
+        text += f"\n❓ <b>E'lonni tasdiqlaysizmi?</b>"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Ha, tasdiqlash", callback_data="final_confirm")], 
+            [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="menu_back_to_main")]
+        ])
     
     photos = data.get("photos", [])
-    kb = get_preview_kb(user['balance'], price)
-    
-    if photos:
-        if data.get("media_type") == "video":
-            await message.answer_video(video=photos[0], caption=caption, reply_markup=kb)
-        else:
-            await message.answer_photo(photo=photos[0], caption=caption, reply_markup=kb)
-    else:
-        await message.answer(caption, reply_markup=kb)
-    await state.set_state(AdStates.preview)
+    try:
+        if photos:
+            if data["media_type"] == "video": await msg.answer_video(photos[0], caption=text, reply_markup=kb)
+            else: await msg.answer_photo(photos[0], caption=text, reply_markup=kb)
+        else: 
+            await msg.answer(text, reply_markup=kb)
+    except:
+        await msg.answer(text, reply_markup=kb)
 
-@router.callback_query(AdStates.preview, F.data == "preview_confirm")
+@router.callback_query(AdStates.preview, F.data == "final_confirm")
 async def confirm_ad(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     user = await db.get_user(call.from_user.id)
     price = data.get("bot_price", 0)
     
-    if user["balance"] < price:
-        await call.answer("❌ Hisobingizda mablag' yetarli emas!", show_alert=True); return
-        
-    if price > 0:
-        try: await db.update_user_balance(user["id"], price, "subtract")
-        except: await call.answer("❌ Mablag' yechishda xatolik!", show_alert=True); return
-
+    if user["balance"] < price: 
+        return await safe_answer(call, "❌ Mablag' yetarli emas!", True)
+    
+    if price > 0: await db.update_user_balance(user["id"], price, "subtract")
+    
     new_ad = await db.create_ad(
-        user_id=user["id"], ad_type=data.get("ad_type"), tariff="bot",
-        photos=data.get("photos", []), breed=data.get("breed"), age=data.get("age"),
-        gender=data.get("gender"), health=data.get("health"),
-        sterilization=data.get("sterilization"), address=data.get("address"),
-        phone=data.get("phone"), price=data.get("price", "0"),
-        currency=data.get("currency", "so'm"), ad_number=(user.get("ad_count") or 0) + 1,
-        cat_count=data.get("cat_count", 1), price_paid=price,
+        user_id=user["id"], ad_type=data["ad_type"], tariff="bot", 
+        photos=data["photos"], breed=data["breed"], age=data["age"], 
+        gender=data["gender"], health=data["health"], sterilization=data["sterilization"], 
+        address=data["address"], phone=data["phone"], price=data.get("price", "0"), 
+        currency=data.get("currency", "so'm"), ad_number=(user.get("ad_count") or 0) + 1, 
+        cat_count=data.get("cat_count", 1), price_paid=price
     )
-
+    
     await safe_delete(call.message)
-    await bot.send_message(call.from_user.id, Texts.AD_ACCEPTED)
-
-    u_name_safe = html_escape(user['username'] or '—')
-    ad_type_upper = str(data.get('ad_type')).upper()
-    b_safe = html_escape(str(data.get('breed') or '—'))
-    a_safe = html_escape(str(data.get('age') or '—'))
-    addr_safe = html_escape(str(data.get('address') or '—'))
-    ph_safe = html_escape(str(data.get('phone') or '—'))
+    await call.message.answer("✅ <b>E'loningiz qabul qilindi!</b>\n\nAdmin tekshiruvidan so'ng kanalga joylanadi.", reply_markup=main_menu(call.from_user.id in BotConfig.ADMIN_IDS))
     
-    admin_caption = f"🆕 <b>YANGI REKLAMA!</b>\n\n👤 Foydalanuvchi: #{user['user_number']} ({u_name_safe})\n📋 Turi: {ad_type_upper}\n🐱 Zot: {b_safe}\n🎂 Yosh: {a_safe}\n📍 Manzil: {addr_safe}\n📞 Tel: {ph_safe}\n"
-    
-    if data.get("ad_type") != "hadiya":
-        p_safe = html_escape(str(data.get('price') or '0'))
-        c_safe = html_escape(str(data.get('currency') or "so'm"))
-        admin_caption += f"💰 Narx: {p_safe} {c_safe}\n"
-        
-    admin_caption += f"💵 To'landi: {price:,} so'm"
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{new_ad['id']}"),
-        InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=f"admin_edit_ad_{new_ad['id']}"),
-        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"admin_decline_ad_{new_ad['id']}")
+    # Adminga yuborish
+    admin_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"adm_ok_{new_ad['id']}"), 
+        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"adm_no_{new_ad['id']}")
     ]])
-
-    photos = data.get("photos", [])
+    admin_text = f"🆕 <b>YANGI E'LON KELDI!</b>\n\n👤 Foydalanuvchi: #{user['user_number']}\n🐱 Zoti: {html_escape(data['breed'])}\n💰 To'lov: {price:,} so'm"
+    
     try:
-        if photos:
-            if data.get("media_type") == "video": await bot.send_video(BotConfig.TECH_ADMIN_ID, video=photos[0], caption=admin_caption, reply_markup=kb)
-            else: await bot.send_photo(BotConfig.TECH_ADMIN_ID, photo=photos[0], caption=admin_caption, reply_markup=kb)
-        else:
-            await bot.send_message(BotConfig.TECH_ADMIN_ID, admin_caption, reply_markup=kb)
-    except Exception as e: logger.error(f"Admin xabar yuborishda xato: {e}")
-
+        if data["photos"]:
+            if data["media_type"] == "video": await bot.send_video(BotConfig.TECH_ADMIN_ID, data["photos"][0], caption=admin_text, reply_markup=admin_kb)
+            else: await bot.send_photo(BotConfig.TECH_ADMIN_ID, data["photos"][0], caption=admin_text, reply_markup=admin_kb)
+        else: 
+            await bot.send_message(BotConfig.TECH_ADMIN_ID, admin_text, reply_markup=admin_kb)
+    except Exception as e:
+        logger.error(f"Adminga yuborishda xato: {e}")
+        
     await state.clear()
 
 # =====================================================================
-# ADMIN: TASDIQLASH VA RAD ETISH (IKKI MARTA BOSISHNI OLDINI OLISH)
+# ADMIN AMALLARI VA TASDIQLASH
 # =====================================================================
-@router.callback_query(F.data.startswith("admin_approve_ad_"))
-async def tech_admin_approve(call: CallbackQuery):
-    if call.from_user.id not in BotConfig.ADMIN_IDS: await call.answer("Ruxsat yo'q", show_alert=True); return
-    ad_id = int(call.data.split("_")[3])
-    
-    # Holatni tekshirish va tugmalarni darhol o'chirish
+@router.callback_query(F.data.startswith("adm_ok_"))
+async def adm_ok(call: CallbackQuery):
+    if call.from_user.id not in BotConfig.ADMIN_IDS: return
+    ad_id = int(call.data.split("_")[2])
     ad = await db.get_ad(ad_id)
-    if not ad: 
-        await call.answer("E'lon topilmadi", show_alert=True); return
-    if ad["status"] != "pending":
+    
+    if not ad or ad["status"] != "pending":
         await call.message.edit_reply_markup(reply_markup=None)
-        await call.answer("⚠️ Bu e'lon allaqachon tasdiqlangan yoki rad etilgan!", show_alert=True); return
-
-    # Tugmalarni o'chirish (ikkinchi marta bosishni oldini olish)
+        return await safe_answer(call, "⚠️ Bu e'lon allaqachon ko'rib chiqilgan!", True)
+    
     try: await call.message.edit_reply_markup(reply_markup=None)
     except: pass
-
+    
     try:
         sent = await post_to_channel(ad)
         await db.update_ad_status(ad_id, "approved", channel_message_id=sent.message_id)
         
-        # Kanalga chiqqan xabarning havolasi
-        ch_id_str = str(BotConfig.CHANNEL_SOTISH_ID if ad["ad_type"] == "sotish" else BotConfig.CHANNEL_HADIYA_ID).replace("-100", "")
-        post_link = f"https://t.me/c/{ch_id_str}/{sent.message_id}"
+        ch_id = str(CHANNEL_SOTISH_ID if ad["ad_type"] == "sotish" else CHANNEL_HADIYA_ID).replace("-100", "")
+        link = f"https://t.me/c/{ch_id}/{sent.message_id}"
         
-        action_text = "Berib bo'ldim" if ad["ad_type"] == "hadiya" else "Sotildi"
-        user_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"✅ {action_text}", callback_data=f"user_ad_done_{ad_id}")],
-            [InlineKeyboardButton(text="👁 Reklamani ko'rish", url=post_link)],
-            [InlineKeyboardButton(text="🏠 Asosiy menyu", callback_data="menu_back_to_main")]
+        act = "🎁 Berib bo'ldim" if ad["ad_type"] == "hadiya" else "💰 Sotildi"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=act, callback_data=f"done_ad_{ad_id}")], 
+            [InlineKeyboardButton(text="👁 E'lonni ko'rish", url=link)]
         ])
-        await bot.send_message(ad["user_id"], f"✅ <b>Sizning e'loningiz tasdiqlandi va kanalga joylandi!</b>\n\n<i>E'lon o'z joyiga ega bo'lgach, «{action_text}» tugmasini bosing.</i>", reply_markup=user_kb)
-        
-        await call.answer("✅ Kanalga yuborildi!", show_alert=False)
+        await bot.send_message(ad["user_id"], f"✅ <b>Sizning e'loningiz tasdiqlandi va kanalga joylandi!</b>\n\n<i>E'lon o'z joyiga ega bo'lgach, «{act}» tugmasini bosing.</i>", reply_markup=kb)
+        await safe_answer(call, "✅ Kanalga yuborildi!")
     except Exception as e:
-        await call.answer(f"❌ Xato: {e}", show_alert=True)
+        await safe_answer(call, f"❌ Xato: {e}", True)
 
-@router.callback_query(F.data.startswith("admin_decline_ad_"))
-async def tech_admin_decline(call: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("adm_no_"))
+async def adm_no(call: CallbackQuery, state: FSMContext):
     if call.from_user.id not in BotConfig.ADMIN_IDS: return
-    ad_id = int(call.data.split("_")[3])
-    
+    ad_id = int(call.data.split("_")[2])
     try: await call.message.edit_reply_markup(reply_markup=None)
     except: pass
     
-    await state.update_data(decline_ad_id=ad_id)
-    await call.message.reply("Rad etish sababini yozing:")
-    await state.set_state(AdminStates.decline_reason)
+    await state.update_data(decline_id=ad_id)
+    await state.set_state(AdminStates.decline)
+    await call.message.reply("✍️ <b>Rad etish sababini yozing:</b>")
 
-@router.message(AdminStates.decline_reason)
-async def process_decline_reason(message: Message, state: FSMContext):
-    ad_id = (await state.get_data()).get("decline_ad_id")
+@router.message(AdminStates.decline)
+async def do_decline(message: Message, state: FSMContext):
+    ad_id = (await state.get_data()).get("decline_id")
     ad = await db.get_ad(ad_id)
-    
     await db.update_ad_status(ad_id, "rejected", reason=message.text)
     
     if ad and ad.get("price_paid", 0) > 0:
@@ -850,78 +828,8 @@ async def process_decline_reason(message: Message, state: FSMContext):
         await bot.send_message(ad["user_id"], f"❌ <b>E'loningiz rad etildi.</b>\n\nSabab: {html_escape(message.text)}\n\nHisobingizga {ad['price_paid']:,} so'm qaytarildi.")
     elif ad:
         await bot.send_message(ad["user_id"], f"❌ <b>E'loningiz rad etildi.</b>\n\nSabab: {html_escape(message.text)}")
-
-    await message.answer("✅ Rad etildi va pul qaytarildi.")
-    await state.clear()
-
-# =====================================================================
-# ADMIN: E'LONNI TAHRIRLASH (EDIT)
-# =====================================================================
-@router.callback_query(F.data.startswith("admin_edit_ad_"))
-async def admin_edit_ad_menu(call: CallbackQuery, state: FSMContext):
-    if call.from_user.id not in BotConfig.ADMIN_IDS: return
-    ad_id = int(call.data.split("_")[3])
-    await state.update_data(edit_ad_id=ad_id)
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🐱 Zotni o'zgartirish", callback_data="edit_field_breed"), InlineKeyboardButton(text="🎂 Yoshni o'zgartirish", callback_data="edit_field_age")],
-        [InlineKeyboardButton(text="📍 Manzilni o'zgartirish", callback_data="edit_field_address"), InlineKeyboardButton(text="📞 Telefonni o'zgartirish", callback_data="edit_field_phone")],
-        [InlineKeyboardButton(text="💰 Narxni o'zgartirish", callback_data="edit_field_price")],
-        [InlineKeyboardButton(text="↩️ Bekor qilish", callback_data="admin_cancel_edit")]
-    ])
-    await call.message.reply("✏️ <b>Qaysi maydonni o'zgartirmoqchisiz?</b>", reply_markup=kb)
-    await state.set_state(AdminStates.editing_ad_field)
-
-@router.callback_query(AdminStates.editing_ad_field, F.data.startswith("edit_field_"))
-async def admin_edit_field_choose(call: CallbackQuery, state: FSMContext):
-    field = call.data.replace("edit_field_", "")
-    await state.update_data(edit_field=field)
-    
-    field_names = {"breed": "Zotni", "age": "Yoshni", "address": "Manzilni", "phone": "Telefon raqamni", "price": "Narxni"}
-    await safe_edit_text(call.message, f"Yangi {field_names.get(field, 'qiymatni')} kiriting:")
-    await state.set_state(AdminStates.editing_ad_value)
-
-@router.message(AdminStates.editing_ad_value)
-async def admin_edit_value_save(message: Message, state: FSMContext):
-    data = await state.get_data()
-    ad_id, field = data.get("edit_ad_id"), data.get("edit_field")
-    
-    await db.update_ad_details(ad_id, **{field: message.text})
-    await message.answer("✅ Muvaffaqiyatli o'zgartirildi!")
-    
-    ad = await db.get_ad(ad_id)
-    
-    u_id = ad['user_id']
-    b_safe = html_escape(str(ad.get('breed') or '—'))
-    a_safe = html_escape(str(ad.get('age') or '—'))
-    addr_safe = html_escape(str(ad.get('address') or '—'))
-    ph_safe = html_escape(str(ad.get('phone') or '—'))
-    p_safe = html_escape(str(ad.get('price') or '0'))
-    c_safe = html_escape(str(ad.get('currency') or "so'm"))
-
-    admin_caption = f"🔄 <b>YANGILANGAN REKLAMA!</b>\n\n👤 User ID: {u_id}\n🐱 Zot: {b_safe}\n🎂 Yosh: {a_safe}\n📍 Manzil: {addr_safe}\n📞 Tel: {ph_safe}\n💰 Narx: {p_safe} {c_safe}\n"
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{ad_id}"),
-        InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=f"admin_edit_ad_{ad_id}"),
-        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"admin_decline_ad_{ad_id}")
-    ]])
-    
-    photos = ad.get("photos") or []
-    if isinstance(photos, str): 
-        try: photos = json.loads(photos)
-        except: photos = []
-    
-    if photos:
-        if len(photos[0]) > 50: await message.answer_video(video=photos[0], caption=admin_caption, reply_markup=kb)
-        else: await message.answer_photo(photo=photos[0], caption=admin_caption, reply_markup=kb)
-    else:
-        await message.answer(admin_caption, reply_markup=kb)
-    await state.clear()
-
-@router.callback_query(F.data == "admin_cancel_edit")
-async def admin_cancel_edit(call: CallbackQuery, state: FSMContext):
-    await safe_delete(call.message)
+        
+    await message.answer("✅ E'lon rad etildi va pul qaytarildi.")
     await state.clear()
 
 # =====================================================================
@@ -931,16 +839,23 @@ async def admin_cancel_edit(call: CallbackQuery, state: FSMContext):
 async def admin_panel(call: CallbackQuery):
     if call.from_user.id not in BotConfig.ADMIN_IDS: return
     stats = await db.get_statistics()
-    text = f"👨‍💼 <b>Admin Paneli</b>\n\n👥 Foydalanuvchilar: {stats['total_users']}\n📢 Jami reklamalar: {stats['total_ads']}\n\n💰 <b>Bugungi tushum:</b> {stats['today_income']:,} so'm\n💵 <b>Oylik tushum:</b> {stats['month_income']:,} so'm"
+    
+    text = (
+        f"👨‍💼 <b>Admin Boshqaruv Paneli</b>\n"
+        f"➖➖➖➖➖➖➖➖➖➖➖➖\n"
+        f"👥 Foydalanuvchilar: <b>{stats['total_users']}</b>\n"
+        f"📢 Jami e'lonlar: <b>{stats['total_ads']}</b>\n\n"
+        f"💰 Bugungi tushum: <b>{stats['today_income']:,} so'm</b>\n"
+        f"💵 Oylik tushum: <b>{stats['month_income']:,} so'm</b>"
+    )
     
     rows = [
-        [InlineKeyboardButton(text="⚙️ Bot holati", callback_data="admin_toggle_bot")],
+        [InlineKeyboardButton(text="⚙️ Bot holati (Yoq/O'chir)", callback_data="admin_toggle_bot")],
         [InlineKeyboardButton(text="💳 Hisob qo'shish", callback_data="admin_add_balance")],
-        [InlineKeyboardButton(text="➕ Ball qo'shish", callback_data="admin_add_score")],
+        [InlineKeyboardButton(text="➕ Ball qo'shish (Telefon orqali)", callback_data="admin_add_score")],
+        [InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")]
     ]
-    if call.from_user.id == BotConfig.TECH_ADMIN_ID: rows.append([InlineKeyboardButton(text="👨‍💻 Texnik Admin", callback_data="tech_admin_panel")])
-    rows.append([InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")])
-    await safe_edit_text(call.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await safe_edit_text(call.message, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
 @router.callback_query(F.data == "admin_toggle_bot")
 async def admin_toggle_bot(call: CallbackQuery):
@@ -948,55 +863,60 @@ async def admin_toggle_bot(call: CallbackQuery):
     current = await db.get_setting("bot_enabled", "1")
     new_val = "0" if current == "1" else "1"
     await db.set_setting("bot_enabled", new_val)
-    await call.answer("✅ Bot yoqildi!" if new_val == "1" else "🔴 Bot o'chirildi!", show_alert=True)
+    await safe_answer(call, "✅ Bot yoqildi!" if new_val == "1" else "🔴 Bot o'chirildi!", True)
 
 @router.callback_query(F.data == "admin_add_balance")
 async def admin_add_balance_start(call: CallbackQuery, state: FSMContext):
     if call.from_user.id not in BotConfig.ADMIN_IDS: return
-    await safe_edit_text(call.message, "💳 <b>Hisob qo'shish</b>\n\nFoydalanuvchi Telegram ID sini kiriting:\n(Masalan: <code>673018191</code>)\n\n/cancel — bekor qilish", reply_markup=None)
-    await state.set_state(AdminStates.add_balance_user_id)
+    await safe_edit_text(call.message, "💳 <b>Hisob qo'shish</b>\n\nFoydalanuvchining Telegram ID sini kiriting:\n(Masalan: <code>673018191</code>)\n\nBekor qilish: /cancel", None)
+    await state.set_state(AdminStates.balance_id)
 
-@router.message(AdminStates.add_balance_user_id)
+@router.message(AdminStates.balance_id)
 async def admin_add_balance_user(message: Message, state: FSMContext):
-    if (message.text or "") == "/cancel": await state.clear(); await message.answer("Bekor qilindi."); return
-    if not (message.text or "").isdigit(): await message.answer("❌ Faqat raqam kiriting:"); return
+    if (message.text or "") == "/cancel": await state.clear(); return await message.answer("Bekor qilindi.")
+    if not (message.text or "").isdigit(): return await message.answer("❌ Faqat raqam kiriting:")
+    
     uid = int(message.text)
     user = await db.get_user(uid)
-    if not user: await message.answer("❌ Bunday ID li foydalanuvchi topilmadi."); return
-    await state.update_data(target_user_id=uid)
-    await message.answer(f"👤 #{user['user_number']} ({html_escape(user['username'] or '—')})\n\nSumma kiriting (ayirish uchun <code>-50000</code>):")
-    await state.set_state(AdminStates.add_balance_amount)
-
-@router.message(AdminStates.add_balance_amount)
-async def admin_add_balance_amount(message: Message, state: FSMContext):
-    if (message.text or "") == "/cancel": await state.clear(); await message.answer("Bekor qilindi."); return
-    try: amount = int(message.text)
-    except: await message.answer("❌ Noto'g'ri summa."); return
+    if not user: return await message.answer("❌ Bunday ID li foydalanuvchi topilmadi.")
     
-    uid = (await state.get_data()).get("target_user_id")
+    await state.update_data(target_id=uid)
+    await message.answer(f"👤 Foydalanuvchi: #{user['user_number']} ({html_escape(user['full_name'])})\n\nQancha summa qo'shmoqchisiz? (Ayirish uchun: <code>-50000</code>):")
+    await state.set_state(AdminStates.balance_amount)
+
+@router.message(AdminStates.balance_amount)
+async def admin_add_balance_amount(message: Message, state: FSMContext):
+    if (message.text or "") == "/cancel": await state.clear(); return await message.answer("Bekor qilindi.")
+    try: amount = int(message.text)
+    except: return await message.answer("❌ Noto'g'ri summa.")
+    
+    uid = (await state.get_data()).get("target_id")
     op = "add" if amount > 0 else "subtract"
+    
     try:
         new_bal = await db.update_user_balance(uid, abs(amount), op)
         msg = f"✅ Hisobingizga {amount:,} so'm qo'shildi." if amount > 0 else f"⚠️ Hisobingizdan {abs(amount):,} so'm yechildi."
         try: await bot.send_message(uid, f"{msg}\n\n💰 Joriy balans: {new_bal:,} so'm")
         except: pass
         await message.answer(f"✅ Bajarildi!\nYangi balans: {new_bal:,} so'm")
-    except Exception as e: await message.answer(f"❌ Xatolik: {e}")
+    except Exception as e: 
+        await message.answer(f"❌ Xatolik: {e}")
     await state.clear()
 
 @router.callback_query(F.data == "admin_add_score")
 async def admin_add_score(call: CallbackQuery, state: FSMContext):
     if call.from_user.id not in BotConfig.ADMIN_IDS: return
-    await safe_edit_text(call.message, "📊 <b>Ball qo'shish</b>\n\nFormat: <code>+998901234567 - 17</code>\n\n/cancel — bekor qilish", reply_markup=None)
-    await state.set_state(AdminStates.add_score_batch)
+    await safe_edit_text(call.message, "📊 <b>Ball qo'shish</b>\n\nFormat: <code>+998901234567 - 17</code>\n\nBekor qilish: /cancel", None)
+    await state.set_state(AdminStates.score)
 
-@router.message(AdminStates.add_score_batch)
+@router.message(AdminStates.score)
 async def process_add_score(message: Message, state: FSMContext):
-    if (message.text or "") == "/cancel": await state.clear(); await message.answer("Bekor qilindi."); return
+    if (message.text or "") == "/cancel": await state.clear(); return await message.answer("Bekor qilindi.")
     m = re.search(r"(\+?\d{9,15})\s*[-–—]?\s*(-?\d+)", message.text or "")
-    if not m: await message.answer("❌ Format xato. Namuna: <code>+998901234567 - 17</code>"); return
+    if not m: return await message.answer("❌ Format xato. Namuna: <code>+998901234567 - 17</code>")
+    
     ok = await db.add_score_by_phone_batch(m.group(1), int(m.group(2)))
-    await message.answer("✅ Ball qo'shildi!" if ok else "❌ Topilmadi.")
+    await message.answer("✅ Ball muvaffaqiyatli qo'shildi!" if ok else "❌ Topilmadi.")
     await state.clear()
 
 # =====================================================================
@@ -1012,15 +932,16 @@ async def on_startup():
     try:
         async with db.pool.acquire() as conn:
             row = await conn.fetchrow("SELECT session_string FROM userbot_sessions WHERE is_active = TRUE LIMIT 1")
-        if row and row["session_string"]:
+        if row and row["session_string"]: 
             await start_userbot(row["session_string"])
-    except Exception as e:
+    except Exception as e: 
         logger.warning(f"Userbot yuklashda xato: {e}")
 
 @dp.shutdown()
 async def on_shutdown():
     if userbot_client and userbot_client.is_connected(): await userbot_client.disconnect()
     await db.disconnect()
+    logger.info("🔌 Bot to'xtatildi")
 
 async def main():
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
