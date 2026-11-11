@@ -27,7 +27,6 @@ from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
 from config import BotConfig, DataLists, Prices, Settings, Texts, UserbotConfig
-from db import db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
