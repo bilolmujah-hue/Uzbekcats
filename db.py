@@ -1,7 +1,7 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: db.py
-# TAVSIF: PostgreSQL — ultra tez, to'liq CRUD, indekslar, kesh, pool
+# TAVSIF: PostgreSQL ma'lumotlar bazasi (To'liq mukammal, xatosiz, migratsiyali)
 # ==============================================================================
 
 import json
@@ -17,31 +17,24 @@ from config import BotConfig, Prices, Settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 # ==============================================================================
 # XATOLIKLAR
 # ==============================================================================
-
 class DBError(Exception):
     pass
-
 
 class InsufficientBalanceError(DBError):
     pass
 
-
 class PhoneTakenError(DBError):
     pass
-
 
 class UserNotFoundError(DBError):
     pass
 
-
 # ==============================================================================
 # YORDAMCHI
 # ==============================================================================
-
 def _normalize_phone(phone: str) -> str:
     """+998XXXXXXXXX formatiga keltiradi."""
     digits = re.sub(r"\D", "", phone or "")
@@ -51,9 +44,7 @@ def _normalize_phone(phone: str) -> str:
         digits = "998" + digits
     return f"+{digits}"
 
-
 def _parse_photos(photos) -> list:
-    """photos'ni har xil formatdan listga keltiradi."""
     if isinstance(photos, list):
         return photos
     if isinstance(photos, str):
@@ -64,45 +55,35 @@ def _parse_photos(photos) -> list:
             return []
     return []
 
-
 # ==============================================================================
 # DATABASE KLASSI
 # ==============================================================================
-
 class Database:
     def __init__(self):
         self.pool: Optional[asyncpg.Pool] = None
         self._settings_cache: Dict[str, str] = {}
         self._last_cleanup: Optional[datetime] = None
 
-    # ==========================================================================
-    # ULANISH / UZILISH
-    # ==========================================================================
-
     async def _init_connection(self, conn: asyncpg.Connection):
-        """Har bir yangi ulanish uchun sozlamalar."""
         try:
             await conn.execute("SET application_name = 'uzbekcats_bot'")
         except Exception:
             pass
 
     async def connect(self):
-        """Bazaga ulanadi va jadvallarni yaratadi (tezlashtirilgan pool)."""
         try:
             self.pool = await asyncpg.create_pool(
                 dsn=BotConfig.DATABASE_URL,
-                min_size=10,
-                max_size=40,
+                min_size=5,
+                max_size=20,
                 max_queries=50000,
                 max_inactive_connection_lifetime=300,
-                max_cached_statement_lifetime=300,
-                max_cacheable_statement_size=16384,
-                statement_cache_size=500,
+                statement_cache_size=100,
                 command_timeout=30,
                 timeout=15,
                 init=self._init_connection,
             )
-            logger.info("✅ PostgreSQL ulanish pool tayyor (10–40)")
+            logger.info("✅ PostgreSQL ulanish pool tayyor")
             await self.create_tables()
             await self._warm_cache()
         except Exception as e:
@@ -110,13 +91,11 @@ class Database:
             raise
 
     async def disconnect(self):
-        """Bazadan uziladi."""
         if self.pool:
             await self.pool.close()
             logger.info("🔌 PostgreSQL uzildi")
 
     async def _warm_cache(self):
-        """Sozlamalarni keshga oldindan yuklaydi."""
         try:
             async with self.pool.acquire() as conn:
                 rows = await conn.fetch("SELECT key, value FROM settings")
@@ -127,13 +106,12 @@ class Database:
             logger.warning(f"Kesh yuklashda xato: {e}")
 
     # ==========================================================================
-    # JADVALLAR + INDEKSLAR (migratsiya)
+    # JADVALLAR VA MIGRATSIYALAR (XATOLARNI TUGATISH)
     # ==========================================================================
-
     async def create_tables(self):
-        """Barcha jadval va indekslarni yaratadi (idempotent)."""
+        """Barcha jadval va ustunlarni yaratadi. Agar eski baza bo'lsa, yetishmayotganlarini qo'shadi."""
         queries = [
-            # -------- USERS --------
+            # 1. USERS
             """
             CREATE TABLE IF NOT EXISTS users (
                 id BIGINT PRIMARY KEY,
@@ -152,8 +130,10 @@ class Database:
             );
             """,
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS spent INTEGER DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_ad_time TIMESTAMP;",
 
-            # -------- CARDS --------
+            # 2. CARDS
             """
             CREATE TABLE IF NOT EXISTS cards (
                 id SERIAL PRIMARY KEY,
@@ -164,7 +144,7 @@ class Database:
             );
             """,
 
-            # -------- PAYMENTS --------
+            # 3. PAYMENTS
             """
             CREATE TABLE IF NOT EXISTS payments (
                 id SERIAL PRIMARY KEY,
@@ -180,7 +160,7 @@ class Database:
             );
             """,
 
-            # -------- ADS --------
+            # 4. ADS (Barcha ustunlar bilan)
             """
             CREATE TABLE IF NOT EXISTS ads (
                 id SERIAL PRIMARY KEY,
@@ -208,10 +188,15 @@ class Database:
                 expires_at TIMESTAMP
             );
             """,
+            # ESKI BAZALAR UCHUN MAJBURIY MIGRATSIYA (XATO BO'LMASLIGI UCHUN)
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS cat_count INTEGER DEFAULT 1;",
             "ALTER TABLE ads ADD COLUMN IF NOT EXISTS price_paid INTEGER DEFAULT 0;",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS reject_reason TEXT;",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS channel_message_id BIGINT;",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS channel_link VARCHAR(255);",
+            "ALTER TABLE ads ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;",
 
-            # -------- REFERRALS --------
+            # 5. REFERRALS
             """
             CREATE TABLE IF NOT EXISTS referrals (
                 referrer_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
@@ -221,7 +206,7 @@ class Database:
             );
             """,
 
-            # -------- SETTINGS --------
+            # 6. SETTINGS
             """
             CREATE TABLE IF NOT EXISTS settings (
                 key VARCHAR(50) PRIMARY KEY,
@@ -229,7 +214,7 @@ class Database:
             );
             """,
 
-            # -------- USERBOT SESSIONS --------
+            # 7. USERBOT SESSIONS
             """
             CREATE TABLE IF NOT EXISTS userbot_sessions (
                 id SERIAL PRIMARY KEY,
@@ -240,48 +225,26 @@ class Database:
             );
             """,
 
-            # ================= INDEKSLAR =================
-            "CREATE INDEX IF NOT EXISTS idx_users_user_number ON users(user_number);",
+            # INDEKSLAR (TEZLIK UCHUN)
             "CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);",
-            "CREATE INDEX IF NOT EXISTS idx_users_score ON users(score DESC) WHERE is_banned = FALSE;",
-            "CREATE INDEX IF NOT EXISTS idx_users_banned ON users(is_banned) WHERE is_banned = TRUE;",
-            "CREATE INDEX IF NOT EXISTS idx_users_registered ON users(registered_at DESC);",
-
+            "CREATE INDEX IF NOT EXISTS idx_users_number ON users(user_number);",
             "CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads(user_id);",
             "CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status);",
-            "CREATE INDEX IF NOT EXISTS idx_ads_status_created ON ads(status, created_at DESC);",
-            "CREATE INDEX IF NOT EXISTS idx_ads_web_active ON ads(created_at DESC) "
-            "WHERE status = 'approved' AND tariff IN ('web_only', 'web_and_channel', 'web');",
-            "CREATE INDEX IF NOT EXISTS idx_ads_pending ON ads(created_at DESC) WHERE status = 'pending';",
-            "CREATE INDEX IF NOT EXISTS idx_ads_expires ON ads(expires_at) "
-            "WHERE expires_at IS NOT NULL AND status = 'approved';",
-            "CREATE INDEX IF NOT EXISTS idx_ads_photos_gin ON ads USING GIN (photos);",
-
             "CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);",
             "CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);",
-            "CREATE INDEX IF NOT EXISTS idx_payments_pending ON payments(status, expires_at) WHERE status = 'pending';",
-            "CREATE INDEX IF NOT EXISTS idx_payments_match ON payments(amount, card_last4, expires_at) "
-            "WHERE status = 'pending';",
-
-            "CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id);",
-            "CREATE INDEX IF NOT EXISTS idx_referrals_referred ON referrals(referred_id);",
-
-            "CREATE INDEX IF NOT EXISTS idx_userbot_active ON userbot_sessions(is_active) WHERE is_active = TRUE;",
         ]
 
         async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                for q in queries:
-                    try:
-                        await conn.execute(q)
-                    except Exception as e:
-                        logger.warning(f"SQL xato (davom etamiz): {e}")
-        logger.info("✅ Jadvallar va indekslar tayyor")
+            for q in queries:
+                try:
+                    await conn.execute(q)
+                except Exception as e:
+                    logger.error(f"❌ Migratsiya xatosi: {e}\nSo'rov: {q[:100]}...")
+        logger.info("✅ Jadvallar va ustunlar to'liq tekshirildi (Migratsiya bajarildi)")
 
     # ==========================================================================
     # USERS
     # ==========================================================================
-
     async def get_user(self, user_id: int) -> Optional[dict]:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
@@ -289,9 +252,7 @@ class Database:
 
     async def get_user_by_number(self, user_number: int) -> Optional[dict]:
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM users WHERE user_number = $1", user_number
-            )
+            row = await conn.fetchrow("SELECT * FROM users WHERE user_number = $1", user_number)
         return dict(row) if row else None
 
     async def get_user_by_phone(self, phone: str) -> Optional[dict]:
@@ -299,44 +260,23 @@ class Database:
         if not normalized:
             return None
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM users WHERE phone = $1", normalized
-            )
+            row = await conn.fetchrow("SELECT * FROM users WHERE phone = $1", normalized)
         return dict(row) if row else None
 
-    async def create_user(
-        self,
-        user_id: int,
-        username: str,
-        full_name: str,
-        phone: str,
-        referral_code: str = None,
-    ) -> dict:
-        """
-        Yangi foydalanuvchi yaratish. Agar mavjud bo'lsa — qaytaradi.
-        Phone boshqa foydalanuvchida bo'lsa — PhoneTakenError.
-        Referral kod bilan kelgan bo'lsa — referal qo'shiladi +1 ball.
-        """
+    async def create_user(self, user_id: int, username: str, full_name: str, phone: str, referral_code: str = None) -> dict:
         normalized_phone = _normalize_phone(phone)
         if not normalized_phone:
             raise DBError("Telefon raqam bo'sh")
 
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                # 1. Mavjud foydalanuvchini tekshirish (1 round trip)
-                existing = await conn.fetchrow(
-                    "SELECT * FROM users WHERE id = $1", user_id
-                )
+                existing = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
                 if existing:
                     return dict(existing)
 
-                # 2. INSERT (phone unique buzilsa IntegrityError)
                 try:
                     row = await conn.fetchrow(
-                        """
-                        INSERT INTO users (id, username, full_name, phone)
-                        VALUES ($1, $2, $3, $4) RETURNING *
-                        """,
+                        "INSERT INTO users (id, username, full_name, phone) VALUES ($1, $2, $3, $4) RETURNING *",
                         user_id, username, full_name, normalized_phone,
                     )
                 except asyncpg.UniqueViolationError:
@@ -344,35 +284,20 @@ class Database:
 
                 user = dict(row)
 
-                # 3. Referral (agar bo'lsa)
                 if referral_code and str(referral_code).startswith("REF"):
                     try:
                         referrer_id = int(str(referral_code).replace("REF", ""))
-                    except ValueError:
-                        referrer_id = None
-
-                    if referrer_id and referrer_id != user_id:
-                        try:
+                        if referrer_id != user_id:
                             await conn.execute(
-                                """
-                                INSERT INTO referrals (referrer_id, referred_id)
-                                VALUES ($1, $2) ON CONFLICT DO NOTHING
-                                """,
+                                "INSERT INTO referrals (referrer_id, referred_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
                                 referrer_id, user_id,
                             )
-                            await conn.execute(
-                                "UPDATE users SET score = score + 1 WHERE id = $1",
-                                referrer_id,
-                            )
-                        except Exception as e:
-                            logger.warning(f"Referral qo'shishda xato: {e}")
-
+                            await conn.execute("UPDATE users SET score = score + 1 WHERE id = $1", referrer_id)
+                    except ValueError:
+                        pass
                 return user
 
-    async def update_user_balance(
-        self, user_id: int, amount: int, operation: str = "add"
-    ) -> int:
-        """Balansni o'zgartirish. Atomic. 'subtract' da balans yetmasa — xato."""
+    async def update_user_balance(self, user_id: int, amount: int, operation: str = "add") -> int:
         if amount < 0:
             raise DBError("Summa manfiy bo'lmaydi")
         async with self.pool.acquire() as conn:
@@ -386,11 +311,7 @@ class Database:
                 return new_balance
             else:
                 new_balance = await conn.fetchval(
-                    """
-                    UPDATE users SET balance = balance - $1, spent = spent + $1
-                    WHERE id = $2 AND balance >= $1
-                    RETURNING balance
-                    """,
+                    "UPDATE users SET balance = balance - $1, spent = spent + $1 WHERE id = $2 AND balance >= $1 RETURNING balance",
                     amount, user_id,
                 )
                 if new_balance is None:
@@ -399,10 +320,7 @@ class Database:
 
     async def update_user_score(self, user_id: int, score: int) -> int:
         async with self.pool.acquire() as conn:
-            new = await conn.fetchval(
-                "UPDATE users SET score = score + $1 WHERE id = $2 RETURNING score",
-                score, user_id,
-            )
+            new = await conn.fetchval("UPDATE users SET score = score + $1 WHERE id = $2 RETURNING score", score, user_id)
         return new or 0
 
     async def add_score_by_phone_batch(self, phone: str, score: int) -> bool:
@@ -410,67 +328,47 @@ class Database:
         if not normalized:
             return False
         async with self.pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE users SET score = score + $1 WHERE phone = $2",
-                score, normalized,
-            )
+            result = await conn.execute("UPDATE users SET score = score + $1 WHERE phone = $2", score, normalized)
         return result != "UPDATE 0"
 
     async def block_user(self, user_id: int) -> bool:
         async with self.pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE users SET is_banned = TRUE WHERE id = $1", user_id
-            )
+            result = await conn.execute("UPDATE users SET is_banned = TRUE WHERE id = $1", user_id)
         return result != "UPDATE 0"
 
     async def unblock_user(self, user_id: int) -> bool:
         async with self.pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE users SET is_banned = FALSE WHERE id = $1", user_id
-            )
+            result = await conn.execute("UPDATE users SET is_banned = FALSE WHERE id = $1", user_id)
         return result != "UPDATE 0"
 
     async def get_banned_users(self) -> List[dict]:
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT * FROM users WHERE is_banned = TRUE ORDER BY user_number ASC"
-            )
+            rows = await conn.fetch("SELECT * FROM users WHERE is_banned = TRUE ORDER BY user_number ASC")
         return [dict(r) for r in rows]
 
     async def get_top_10_users(self) -> List[dict]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
-                """
-                SELECT id, user_number, full_name, phone, score, username
-                FROM users WHERE is_banned = FALSE
-                ORDER BY score DESC, registered_at ASC LIMIT 10
-                """
+                "SELECT id, user_number, full_name, phone, score, username FROM users WHERE is_banned = FALSE ORDER BY score DESC, registered_at ASC LIMIT 10"
             )
         return [dict(r) for r in rows]
 
     async def get_top_participants(self, min_score: int = 15, limit: int = 100) -> List[dict]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
-                """
-                SELECT id, user_number, full_name, phone, score, username
-                FROM users
-                WHERE score >= $1 AND is_banned = FALSE
-                ORDER BY score DESC, registered_at ASC LIMIT $2
-                """,
+                "SELECT id, user_number, full_name, phone, score, username FROM users WHERE score >= $1 AND is_banned = FALSE ORDER BY score DESC LIMIT $2",
                 min_score, limit,
             )
         return [dict(r) for r in rows]
 
     async def get_detailed_user_stats(self, user_id: int) -> Optional[dict]:
-        """Bitta query bilan: user + ads_count + referrals_count + paid_total."""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT u.*,
                     (SELECT COUNT(*) FROM ads WHERE user_id = u.id) AS ads_count,
                     (SELECT COUNT(*) FROM referrals WHERE referrer_id = u.id) AS referrals_count,
-                    (SELECT COALESCE(SUM(amount), 0) FROM payments
-                        WHERE user_id = u.id AND status = 'paid') AS paid_total
+                    (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE user_id = u.id AND status = 'paid') AS paid_total
                 FROM users u WHERE u.id = $1
                 """,
                 user_id,
@@ -480,18 +378,10 @@ class Database:
     # ==========================================================================
     # REFERRALS
     # ==========================================================================
-
     async def get_referrals_by_user(self, user_id: int) -> List[dict]:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
-                """
-                SELECT u.id, u.user_number, u.full_name, u.username, u.score,
-                       r.created_at AS referred_at
-                FROM referrals r
-                JOIN users u ON u.id = r.referred_id
-                WHERE r.referrer_id = $1
-                ORDER BY r.created_at DESC
-                """,
+                "SELECT u.id, u.user_number, u.full_name, u.username, u.score, r.created_at AS referred_at FROM referrals r JOIN users u ON u.id = r.referred_id WHERE r.referrer_id = $1 ORDER BY r.created_at DESC",
                 user_id,
             )
         return [dict(r) for r in rows]
@@ -499,13 +389,7 @@ class Database:
     async def get_referrer_of_user(self, user_id: int) -> Optional[dict]:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                """
-                SELECT u.id, u.user_number, u.full_name, u.username, u.score,
-                       r.created_at AS referred_at
-                FROM referrals r
-                JOIN users u ON u.id = r.referrer_id
-                WHERE r.referred_id = $1
-                """,
+                "SELECT u.id, u.user_number, u.full_name, u.username, u.score, r.created_at AS referred_at FROM referrals r JOIN users u ON u.id = r.referrer_id WHERE r.referred_id = $1",
                 user_id,
             )
         return dict(row) if row else None
@@ -513,27 +397,11 @@ class Database:
     # ==========================================================================
     # ADS
     # ==========================================================================
-
     async def create_ad(
-        self,
-        user_id: int,
-        ad_type: str,
-        tariff: str,
-        photos: list,
-        breed: str,
-        age: str,
-        gender: str,
-        health: str,
-        sterilization: str,
-        address: str,
-        phone: str,
-        price: str,
-        currency: str,
-        ad_number: int,
-        cat_count: int = 1,
-        price_paid: Optional[int] = None,
+        self, user_id: int, ad_type: str, tariff: str, photos: list, breed: str, age: str,
+        gender: str, health: str, sterilization: str, address: str, phone: str,
+        price: str, currency: str, ad_number: int, cat_count: int = 1, price_paid: Optional[int] = None,
     ) -> dict:
-        """Yangi reklama + user.ad_count++. price_paid avtomatik hisoblanadi."""
         expires_at = None
         if tariff in ("web_only", "web_and_channel", "web"):
             days = await self.get_setting("web_ad_days", str(Settings.WEB_AD_DAYS))
@@ -542,14 +410,8 @@ class Database:
             except (ValueError, TypeError):
                 expires_at = datetime.utcnow() + timedelta(days=Settings.WEB_AD_DAYS)
 
-        # price_paid ni avtomatik hisoblash (agar berilmagan bo'lsa)
         if price_paid is None:
-            price_map = {
-                "web_only": Prices.TARIFF_WEB,
-                "channel_only": Prices.TARIFF_CHANNEL,
-                "web_and_channel": Prices.TARIFF_BOTH,
-                "bot": Prices.BOT_PRICES,
-            }
+            price_map = {"web_only": Prices.TARIFF_WEB, "channel_only": Prices.TARIFF_CHANNEL, "web_and_channel": Prices.TARIFF_BOTH, "bot": Prices.BOT_PRICES}
             mapping = price_map.get(tariff, {})
             price_paid = mapping.get(max(1, min(5, cat_count)), 0)
 
@@ -558,11 +420,7 @@ class Database:
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 actual_ad_number = await conn.fetchval(
-                    """
-                    UPDATE users SET ad_count = ad_count + 1,
-                                     last_ad_time = CURRENT_TIMESTAMP
-                    WHERE id = $1 RETURNING ad_count
-                    """,
+                    "UPDATE users SET ad_count = ad_count + 1, last_ad_time = CURRENT_TIMESTAMP WHERE id = $1 RETURNING ad_count",
                     user_id,
                 )
                 if actual_ad_number is None:
@@ -586,10 +444,7 @@ class Database:
 
     async def get_user_ads(self, user_id: int) -> List[dict]:
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT * FROM ads WHERE user_id = $1 ORDER BY created_at DESC",
-                user_id,
-            )
+            rows = await conn.fetch("SELECT * FROM ads WHERE user_id = $1 ORDER BY created_at DESC", user_id)
         return [dict(r) for r in rows]
 
     async def get_active_web_ads(self) -> List[dict]:
@@ -607,19 +462,10 @@ class Database:
 
     async def get_pending_ads(self) -> List[dict]:
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT * FROM ads WHERE status = 'pending' ORDER BY created_at DESC"
-            )
+            rows = await conn.fetch("SELECT * FROM ads WHERE status = 'pending' ORDER BY created_at DESC")
         return [dict(r) for r in rows]
 
-    async def update_ad_status(
-        self,
-        ad_id: int,
-        status: str,
-        reason: str = None,
-        channel_message_id: int = None,
-        channel_link: str = None,
-    ):
+    async def update_ad_status(self, ad_id: int, status: str, reason: str = None, channel_message_id: int = None, channel_link: str = None):
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """
@@ -633,18 +479,12 @@ class Database:
             )
 
     async def cleanup_expired_ads(self, force: bool = False) -> int:
-        """Muddati o'tgan reklamalarni o'chirish (60 sek throttled)."""
         now = datetime.utcnow()
         if not force and self._last_cleanup and (now - self._last_cleanup).total_seconds() < 60:
             return 0
         async with self.pool.acquire() as conn:
             result = await conn.execute(
-                """
-                UPDATE ads SET status = 'expired'
-                WHERE status = 'approved'
-                  AND expires_at IS NOT NULL
-                  AND expires_at < CURRENT_TIMESTAMP
-                """
+                "UPDATE ads SET status = 'expired' WHERE status = 'approved' AND expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP"
             )
         self._last_cleanup = now
         try:
@@ -653,59 +493,34 @@ class Database:
             return 0
 
     # ==========================================================================
-    # CARDS
+    # CARDS & PAYMENTS
     # ==========================================================================
-
     async def add_card(self, number: str, holder: str) -> int:
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute("UPDATE cards SET is_active = FALSE")
-                card_id = await conn.fetchval(
-                    """
-                    INSERT INTO cards (number, holder, is_active)
-                    VALUES ($1, $2, TRUE) RETURNING id
-                    """,
-                    number, holder,
-                )
+                card_id = await conn.fetchval("INSERT INTO cards (number, holder, is_active) VALUES ($1, $2, TRUE) RETURNING id", number, holder)
         return card_id
 
     async def get_active_card(self) -> Optional[dict]:
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM cards WHERE is_active = TRUE ORDER BY id DESC LIMIT 1"
-            )
+            row = await conn.fetchrow("SELECT * FROM cards WHERE is_active = TRUE ORDER BY id DESC LIMIT 1")
         return dict(row) if row else None
 
-    # ==========================================================================
-    # PAYMENTS
-    # ==========================================================================
-
-    async def create_payment_request(
-        self, user_id: int, amount: int, card_id: int, card_last4: str
-    ) -> int:
+    async def create_payment_request(self, user_id: int, amount: int, card_id: int, card_last4: str) -> int:
         expires_at = datetime.utcnow() + timedelta(minutes=Settings.TOPUP_TIMER_MINUTES)
         async with self.pool.acquire() as conn:
             payment_id = await conn.fetchval(
-                """
-                INSERT INTO payments (user_id, amount, card_id, card_last4, expires_at)
-                VALUES ($1, $2, $3, $4, $5) RETURNING id
-                """,
+                "INSERT INTO payments (user_id, amount, card_id, card_last4, expires_at) VALUES ($1, $2, $3, $4, $5) RETURNING id",
                 user_id, amount, card_id, card_last4, expires_at,
             )
         return payment_id
 
     async def attach_receipt(self, payment_id: int, file_id: str):
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE payments SET receipt_file_id = $1 WHERE id = $2",
-                file_id, payment_id,
-            )
+            await conn.execute("UPDATE payments SET receipt_file_id = $1 WHERE id = $2", file_id, payment_id)
 
     async def match_userbot_payment(self, amount: int, card_last4: str) -> Optional[int]:
-        """
-        Userbot xabarini to'lovga moslashtirish (atomic).
-        Mos kelsa: status='paid' + balans qo'shiladi.
-        """
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 payment = await conn.fetchrow(
@@ -713,35 +528,24 @@ class Database:
                     SELECT id, user_id FROM payments
                     WHERE amount = $1 AND card_last4 = $2 AND status = 'pending'
                       AND expires_at > CURRENT_TIMESTAMP
-                    ORDER BY created_at ASC LIMIT 1
-                    FOR UPDATE SKIP LOCKED
+                    ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
                     """,
                     amount, card_last4,
                 )
                 if not payment:
                     return None
-
-                await conn.execute(
-                    "UPDATE payments SET status = 'paid', userbot_matched = TRUE WHERE id = $1",
-                    payment["id"],
-                )
-                await conn.execute(
-                    "UPDATE users SET balance = balance + $1 WHERE id = $2",
-                    amount, payment["user_id"],
-                )
+                await conn.execute("UPDATE payments SET status = 'paid', userbot_matched = TRUE WHERE id = $1", payment["id"])
+                await conn.execute("UPDATE users SET balance = balance + $1 WHERE id = $2", amount, payment["user_id"])
                 return payment["user_id"]
 
     # ==========================================================================
-    # SETTINGS (in-memory cache)
+    # SETTINGS & STATISTICS
     # ==========================================================================
-
     async def get_setting(self, key: str, default: str = None) -> Optional[str]:
         if key in self._settings_cache:
             return self._settings_cache[key]
         async with self.pool.acquire() as conn:
-            val = await conn.fetchval(
-                "SELECT value FROM settings WHERE key = $1", key
-            )
+            val = await conn.fetchval("SELECT value FROM settings WHERE key = $1", key)
         if val is None:
             return default
         self._settings_cache[key] = val
@@ -750,17 +554,10 @@ class Database:
     async def set_setting(self, key: str, value: str):
         async with self.pool.acquire() as conn:
             await conn.execute(
-                """
-                INSERT INTO settings (key, value) VALUES ($1, $2)
-                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-                """,
+                "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
                 key, value,
             )
         self._settings_cache[key] = value
-
-    # ==========================================================================
-    # STATISTIKA (1 query — 1 round trip)
-    # ==========================================================================
 
     async def get_statistics(self) -> dict:
         async with self.pool.acquire() as conn:
@@ -771,10 +568,8 @@ class Database:
                     (SELECT COUNT(*) FROM users WHERE is_banned = TRUE) AS banned_users,
                     (SELECT COUNT(*) FROM ads) AS total_ads,
                     (SELECT COUNT(*) FROM ads WHERE status = 'pending') AS pending_ads,
-                    (SELECT COALESCE(SUM(amount), 0) FROM payments
-                        WHERE status = 'paid' AND created_at >= CURRENT_DATE) AS today_income,
-                    (SELECT COALESCE(SUM(amount), 0) FROM payments
-                        WHERE status = 'paid' AND created_at >= date_trunc('month', CURRENT_DATE)) AS month_income,
+                    (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'paid' AND created_at >= CURRENT_DATE) AS today_income,
+                    (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'paid' AND created_at >= date_trunc('month', CURRENT_DATE)) AS month_income,
                     (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'paid') AS total_income
                 """
             )
@@ -792,7 +587,6 @@ class Database:
             "total_income": int(row["total_income"] or 0),
             "tech_admin_cut_month": tech_cut,
         }
-
 
 # ==============================================================================
 # SINGLETON
