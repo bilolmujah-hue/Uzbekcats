@@ -2,8 +2,8 @@
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: bot.py
 # TAVSIF: To'liq xatosiz, video/rasm muammolari, media guruhlarga tugma qo'shish,
-#         FSM state xatolari bartaraf etilgan, kengaytirilgan Admin panel.
-#         (Eski koddan ko'ra ko'proq funksiyalar)
+#         FSM state xatolari, message is not modified xatosi bartaraf etilgan,
+#         kengaytirilgan Admin panel va qo'shimcha qulayliklar bilan.
 # ==============================================================================
 
 import asyncio
@@ -37,7 +37,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # =====================================================================
-# BOT VA DISPATCHER
+# BOT VA DISPATCHER SOZLAMALARI
 # =====================================================================
 bot = Bot(
     token=BotConfig.BOT_TOKEN,
@@ -75,33 +75,49 @@ async def global_error_handler(event: ErrorEvent):
     return True
 
 # =====================================================================
-# YORDAMCHI FUNKSIYALAR
+# YORDAMCHI FUNKSIYALAR (Xatolarga chidamli)
 # =====================================================================
 async def safe_answer(call: CallbackQuery, text: str = None, show_alert: bool = False):
+    """Callback ga xavfsiz javob qaytarish."""
     try:
         await call.answer(text=text, show_alert=show_alert)
-    except TelegramBadRequest:
+    except TelegramBadRequest as e:
+        logger.warning(f"safe_answer xatosi: {e}")
+    except Exception:
         pass
 
 async def safe_edit_text(message: Message, text: str, reply_markup=None):
+    """Xabarni tahrirlash, xato bersa yangi xabar yuborish."""
     try:
         await message.edit_text(text, reply_markup=reply_markup)
-    except TelegramBadRequest:
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            return
         try:
             await message.delete()
         except Exception:
             pass
         await message.answer(text, reply_markup=reply_markup)
+    except Exception:
+        try:
+            await message.answer(text, reply_markup=reply_markup)
+        except Exception:
+            pass
 
 async def safe_delete(message: Message):
+    """Xabarni xavfsiz o'chirish."""
     try:
         await message.delete()
     except Exception:
         pass
 
 async def safe_edit_caption(message: Message, caption: str, reply_markup=None):
+    """Rasm/video ostidagi matnni (caption) tahrirlash."""
     try:
         await message.edit_caption(caption=caption, reply_markup=reply_markup)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            return
     except Exception:
         pass
 
@@ -130,7 +146,7 @@ async def start_userbot(session_string: str):
             userbot_client = None
             return
 
-        logger.info("✅ Userbot ishga tushdi")
+        logger.info("✅ Userbot muvaffaqiyatli ishga tushdi!")
 
         @userbot_client.on(events.NewMessage(chats=UserbotConfig.TARGET_BOT))
         async def handler(event):
@@ -146,8 +162,8 @@ async def start_userbot(session_string: str):
                     try:
                         await bot.send_message(user_id, Texts.TOPUP_PAID.format(amount=amount))
                         logger.info(f"✅ Userbot to'lovni tasdiqladi: user={user_id}, amount={amount}")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Userga xabar yuborishda xato: {e}")
             except Exception as e:
                 logger.warning(f"Userbot to'lovini tahlil qilishda xato: {e}")
 
@@ -171,8 +187,8 @@ async def check_subscription(user_id: int) -> tuple[bool, bool]:
                 sotish_ok = ok
             else:
                 hadiya_ok = ok
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Obunani tekshirishda xato ({key}): {e}")
     return sotish_ok, hadiya_ok
 
 def get_sub_text(sotish_ok: bool, hadiya_ok: bool) -> str:
@@ -197,7 +213,7 @@ def get_subscription_kb(sotish_ok: bool, hadiya_ok: bool) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 # =====================================================================
-# FSM HOLATLARI
+# FSM HOLATLARI (State Groups)
 # =====================================================================
 class RegStates(StatesGroup):
     checking_subscription = State()
@@ -232,7 +248,7 @@ class AdminStates(StatesGroup):
     editing_ad_value = State()
 
 # =====================================================================
-# KLAVIATURALAR
+# KLAVIATURALAR (Tugmalar)
 # =====================================================================
 def get_main_menu_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
     kb = [
@@ -373,6 +389,15 @@ async def post_to_channel(ad_data: dict):
         except: photos = []
     
     media_type = ad_data.get("media_type", "photo")
+
+    # XATO Tuzatish: Fayl kengaytmasiga qarab tekshirish (ehtiyot chorasi)
+    if photos:
+        first_p = str(photos[0]).lower()
+        if first_p.endswith(('.mp4', '.mov', '.avi', '.webm')):
+            media_type = "video"
+        elif media_type == "video" and not first_p.endswith(('.mp4', '.mov', '.avi', '.webm')):
+             # Agar db da video deyilgan-u, lekin rasm bo'lsa
+             pass 
 
     try:
         if media_type == "video" and photos:
@@ -721,11 +746,13 @@ async def topup_admin_approve(call: CallbackQuery):
         
     try:
         await call.message.edit_caption(caption=f"✅ <b>To'lov tasdiqlandi!</b>\nSumma: {payment['amount']:,} so'm", reply_markup=None)
-    except Exception:
+    except TelegramBadRequest:
         try:
             await call.message.edit_reply_markup(reply_markup=None)
         except:
             pass
+    except Exception:
+        pass
 
     try:
         await bot.send_message(
@@ -904,7 +931,10 @@ async def process_continue_media(call: CallbackQuery, state: FSMContext):
 @router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_page_"))
 async def breed_page(call: CallbackQuery):
     page = int(call.data.split("_")[2])
-    await call.message.edit_reply_markup(reply_markup=get_breed_kb(page))
+    try:
+        await call.message.edit_reply_markup(reply_markup=get_breed_kb(page))
+    except TelegramBadRequest:
+        pass
 
 @router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_") & ~F.data.startswith("breed_page_") & ~F.data.startswith("breed_custom"))
 async def process_breed(call: CallbackQuery, state: FSMContext):
@@ -1106,7 +1136,7 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     for i, cat in enumerate(cats_data, 1):
         admin_caption += f"🐱 {i}-mushuk: {cat.get('breed')} | {cat.get('age')} | {cat.get('gender')}\n"
     
-    # 4-rasmdagi xato tuzatildi: Tech Adminga albatta tugmalar bilan boradi
+    # Tech Adminga albatta tugmalar bilan boradi
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{new_ad['id']}"),
         InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=f"admin_edit_ad_{new_ad['id']}"),
@@ -1123,7 +1153,10 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
                     media_group = [InputMediaPhoto(media=p, caption=admin_caption if i==0 else None, parse_mode=ParseMode.HTML) for i, p in enumerate(photos)]
                     sent = await bot.send_media_group(BotConfig.TECH_ADMIN_ID, media=media_group)
                     # Media guruhning 1-xabariga tugmalarni ulash
-                    await bot.edit_message_reply_markup(chat_id=BotConfig.TECH_ADMIN_ID, message_id=sent[0].message_id, reply_markup=kb)
+                    try:
+                        await bot.edit_message_reply_markup(chat_id=BotConfig.TECH_ADMIN_ID, message_id=sent[0].message_id, reply_markup=kb)
+                    except TelegramBadRequest:
+                        pass
                 else:
                     await bot.send_photo(BotConfig.TECH_ADMIN_ID, photo=photos[0], caption=admin_caption, reply_markup=kb)
         else:
@@ -1148,13 +1181,16 @@ async def tech_admin_approve(call: CallbackQuery):
         await safe_answer(call, "E'lon topilmadi", show_alert=True)
         return
     if ad["status"] != "pending":
-        await call.message.edit_reply_markup(reply_markup=None)
+        try:
+            await call.message.edit_reply_markup(reply_markup=None)
+        except TelegramBadRequest:
+            pass
         await safe_answer(call, "⚠️ Bu e'lon allaqachon tasdiqlangan yoki rad etilgan!", show_alert=True)
         return
 
     try:
         await call.message.edit_reply_markup(reply_markup=None)
-    except:
+    except TelegramBadRequest:
         pass
 
     try:
@@ -1184,7 +1220,7 @@ async def tech_admin_decline(call: CallbackQuery, state: FSMContext):
     
     try:
         await call.message.edit_reply_markup(reply_markup=None)
-    except:
+    except Exception:
         pass
     
     await state.update_data(decline_ad_id=ad_id)
@@ -1285,7 +1321,7 @@ async def admin_cancel_edit(call: CallbackQuery, state: FSMContext):
     await state.clear()
 
 # =====================================================================
-# ADMIN PANEL (KENGAYTIRILGAN)
+# ADMIN PANEL
 # =====================================================================
 @router.callback_query(F.data == "admin_panel")
 async def admin_panel(call: CallbackQuery):
@@ -1315,7 +1351,6 @@ async def admin_panel(call: CallbackQuery):
 async def tech_admin_panel(call: CallbackQuery):
     if call.from_user.id != BotConfig.TECH_ADMIN_ID:
         return
-    # Userbot holatini tekshirish
     status_text = "❌ O'chirilgan"
     if userbot_client and userbot_client.is_connected():
         status_text = "✅ Ulangan"
@@ -1430,8 +1465,9 @@ async def on_startup():
     await db.connect()
     try:
         await bot.set_my_commands([BotCommand(command="start", description="Botni ishga tushirish")])
-    except:
-        pass
+    except Exception as e:
+        logger.warning(f"Kommandalarni set qilishda xato: {e}")
+    
     logger.info("🚀 Bot polling boshlandi")
 
     # Bazadagi faol userbot sessiyasini yuklash
@@ -1448,6 +1484,7 @@ async def on_shutdown():
     if userbot_client and userbot_client.is_connected():
         await userbot_client.disconnect()
     await db.disconnect()
+    logger.info("🔌 Bot to'xtatildi")
 
 async def main():
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
