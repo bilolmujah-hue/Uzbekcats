@@ -2,8 +2,8 @@
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: db.py
 # TAVSIF: PostgreSQL + asyncpg — to'liq mukammal, barcha migratsiyalar, 
-#         Admin panel uchun kengaytirilgan funksiyalar, Userbot, Sozlamalar.
-#         (Eski koddan ko'ra ko'proq imkoniyatlar)
+#         Admin panel uchun kengaytirilgan funksiyalar, Userbot, Sozlamalar,
+#         Mute (bloklash) va Ogohlantirish tizimi bilan.
 # ==============================================================================
 
 import asyncio
@@ -44,7 +44,7 @@ class Database:
                 self.pool = await asyncpg.create_pool(
                     dsn=dsn,
                     min_size=1,
-                    max_size=20, # Kengaytirildi
+                    max_size=20,
                     command_timeout=60,
                 )
                 await self._create_tables()
@@ -65,7 +65,6 @@ class Database:
     async def _create_tables(self):
         """Jadvallarni yaratish va eski xatolarni avtomatik tuzatish (Migratsiya)."""
         async with self.pool.acquire() as conn:
-            # Bir vaqtda bir nechta bot ishga tushsa ham xato bermasligi uchun qulf
             await conn.execute("SELECT pg_advisory_lock(987654321)")
             try:
                 await self._run_ddl(conn)
@@ -94,7 +93,7 @@ class Database:
             )
         """)
 
-        # 2. ADS JADVALI (media_type ustuni bilan yangilandi)
+        # 2. ADS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS ads (
                 id SERIAL PRIMARY KEY,
@@ -116,7 +115,7 @@ class Database:
                 ad_number INT,
                 cat_count INT DEFAULT 1,
                 price_paid BIGINT DEFAULT 0,
-                status TEXT DEFAULT 'pending', -- pending, approved, rejected, sold, expired
+                status TEXT DEFAULT 'pending',
                 reject_reason TEXT,
                 channel_message_id BIGINT,
                 created_at TIMESTAMP DEFAULT NOW(),
@@ -124,21 +123,16 @@ class Database:
             )
         """)
 
-        # 🚨 ESKI BAZALARNI YANGILASH (MIGRATSIYA) - Xatosiz ishlaydi
+        # 🚨 ESKI BAZALARNI YANGILASH (MIGRATSIYA)
         await conn.execute("""
             DO $$
             BEGIN
-                -- users: referred_by
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referred_by') THEN
                     ALTER TABLE users ADD COLUMN referred_by BIGINT;
                 END IF;
-                
-                -- users: mute_until
                 IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='muted_until') THEN
                     ALTER TABLE users RENAME COLUMN muted_until TO mute_until;
                 END IF;
-
-                -- users: spent, ad_count, warn_count
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='spent') THEN
                     ALTER TABLE users ADD COLUMN spent BIGINT DEFAULT 0;
                 END IF;
@@ -148,8 +142,6 @@ class Database:
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='warn_count') THEN
                     ALTER TABLE users ADD COLUMN warn_count INT DEFAULT 0;
                 END IF;
-
-                -- ads: cats_data, media_type
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ads' AND column_name='cats_data') THEN
                     ALTER TABLE ads ADD COLUMN cats_data JSONB DEFAULT '[]'::jsonb;
                 END IF;
@@ -168,7 +160,7 @@ class Database:
                 card_id INT,
                 card_last4 TEXT,
                 receipt_file_id TEXT,
-                status TEXT DEFAULT 'pending', -- pending, paid, cancelled
+                status TEXT DEFAULT 'pending',
                 userbot_matched BOOLEAN DEFAULT FALSE,
                 admin_message_id BIGINT,
                 created_at TIMESTAMP DEFAULT NOW(),
@@ -194,8 +186,6 @@ class Database:
                 value TEXT
             )
         """)
-        
-        # Sozlamalar uchun boshlang'ich qiymatlar
         await conn.execute("INSERT INTO settings (key, value) VALUES ('ad_duration_days', '10') ON CONFLICT DO NOTHING")
         await conn.execute("INSERT INTO settings (key, value) VALUES ('bot_enabled', '1') ON CONFLICT DO NOTHING")
 
@@ -232,7 +222,7 @@ class Database:
             )
         """)
 
-        # INDEKSLAR (Tez ishlashi uchun)
+        # INDEKSLAR
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_user_id ON ads(user_id)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_status ON ads(status)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_ads_tariff ON ads(tariff)")
@@ -248,7 +238,6 @@ class Database:
 
     @staticmethod
     def _parse_ad(row) -> Optional[dict]:
-        """Bazadan kelgan qatorni Dictionary ga o'girish va JSON larni parse qilish."""
         if row is None:
             return None
         d = dict(row)
@@ -287,9 +276,15 @@ class Database:
                 "SELECT * FROM users WHERE phone LIKE $1", f"%{digits[-9:]}"
             )
         return dict(row) if row else None
+        
+    async def get_user_by_username(self, username: str) -> Optional[dict]:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM users WHERE username ILIKE $1", f"%{username}%"
+            )
+        return dict(row) if row else None
 
     async def get_all_users(self, limit: int = 100, offset: int = 0) -> list:
-        """Admin panel uchun barcha foydalanuvchilar (Paginatsiya bilan)."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT * FROM users ORDER BY registered_at DESC LIMIT $1 OFFSET $2", 
@@ -298,7 +293,6 @@ class Database:
         return [dict(r) for r in rows]
         
     async def search_users(self, query: str) -> list:
-        """Telefon yoki ism bo'yicha foydalanuvchilarni qidirish."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT * FROM users WHERE phone LIKE $1 OR full_name ILIKE $2 OR username ILIKE $3 LIMIT 50",
@@ -307,7 +301,6 @@ class Database:
         return [dict(r) for r in rows]
 
     async def get_user_full_info(self, telegram_id: int) -> Optional[dict]:
-        """Admin panelda foydalanuvchi ustiga bosganda to'liq ma'lumot olish uchun."""
         user = await self.get_user(telegram_id)
         if not user:
             return None
@@ -344,7 +337,6 @@ class Database:
             phone = "+" + phone
 
         referrer_id = None
-        # 🚨 XATO TUZATILDI: int64 chegarasini tekshirish
         if referral_code and isinstance(referral_code, str) and referral_code.startswith("REF"):
             try:
                 ref_str = referral_code[3:]
@@ -424,6 +416,32 @@ class Database:
                         raise ValueError("Foydalanuvchi topilmadi")
         return row["balance"]
 
+    # 🔴 QAYTARILDI: check_mute, mute_user, add_warning
+    async def check_mute(self, user_id: int) -> bool:
+        async with self.pool.acquire() as conn:
+            until = await conn.fetchval(
+                "SELECT mute_until FROM users WHERE id = $1", user_id
+            )
+        if not until:
+            return False
+        return until > datetime.utcnow()
+
+    async def mute_user(self, user_id: int, hours: int = 24) -> bool:
+        until = datetime.utcnow() + timedelta(hours=hours)
+        async with self.pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE users SET mute_until = $1 WHERE id = $2", until, user_id
+            )
+        return result != "UPDATE 0"
+
+    async def add_warning(self, user_id: int) -> int:
+        async with self.pool.acquire() as conn:
+            count = await conn.fetchval(
+                "UPDATE users SET warn_count = warn_count + 1 WHERE id = $1 RETURNING warn_count",
+                user_id,
+            )
+        return count or 0
+
     async def block_user(self, user_id: int) -> bool:
         async with self.pool.acquire() as conn:
             result = await conn.execute(
@@ -437,6 +455,11 @@ class Database:
                 "UPDATE users SET is_banned = FALSE WHERE id = $1", user_id
             )
         return result != "UPDATE 0"
+        
+    async def delete_user(self, user_id: int) -> bool:
+        async with self.pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+        return result != "DELETE 0"
 
     async def add_score_by_phone_batch(self, phone: str, score: int) -> bool:
         digits = "".join(c for c in phone if c.isdigit())
@@ -456,6 +479,9 @@ class Database:
             )
         return [dict(r) for r in rows]
         
+    async def get_top_10_users(self) -> list:
+        return await self.get_top_users(limit=10)
+
     async def get_top_participants(self, min_score: int = 15) -> list:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
@@ -476,6 +502,18 @@ class Database:
                 user_id,
             )
         return [dict(r) for r in rows]
+
+    async def get_referrer_of_user(self, user_id: int) -> Optional[dict]:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT u.* FROM referrals r
+                JOIN users u ON u.id = r.referrer_id
+                WHERE r.referred_id = $1
+                """,
+                user_id,
+            )
+        return dict(row) if row else None
 
     # ==========================================================================
     # ADS (E'LONLAR)
@@ -507,7 +545,6 @@ class Database:
         photos_json = json.dumps(photos, ensure_ascii=False)
         cats_data_json = json.dumps(cats_data, ensure_ascii=False)
 
-        # Sozlamalardan reklama muddatini olish
         ad_days_str = await self.get_setting("ad_duration_days", str(Settings.WEB_AD_DAYS))
         try:
             ad_days = int(ad_days_str)
@@ -569,7 +606,6 @@ class Database:
         return [self._parse_ad(r) for r in rows]
 
     async def get_active_web_ads(self) -> list:
-        """Web App asosiy sahifasi uchun faol e'lonlar."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
@@ -586,7 +622,6 @@ class Database:
         return [self._parse_ad(r) for r in rows]
 
     async def get_all_ads(self, status_filter: str = None) -> list:
-        """Admin panel uchun barcha e'lonlar (Holat bo'yicha filter bilan)."""
         async with self.pool.acquire() as conn:
             if status_filter:
                 rows = await conn.fetch(
@@ -633,7 +668,6 @@ class Database:
                 )
 
     async def update_ad_details(self, ad_id: int, **fields):
-        """Admin tomonidan reklamani tahrirlash uchun."""
         allowed = {
             "breed", "age", "gender", "health", "sterilization",
             "address", "phone", "price", "currency", "cat_count", "media_type"
@@ -743,7 +777,6 @@ class Database:
         return dict(row) if row else None
 
     async def get_all_payments(self, limit: int = 50) -> list:
-        """Admin panel uchun barcha to'lovlar."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
@@ -752,6 +785,26 @@ class Database:
                 JOIN users u ON u.id = p.user_id 
                 ORDER BY p.created_at DESC LIMIT $1
                 """, limit
+            )
+        return [dict(r) for r in rows]
+        
+    async def get_pending_payments(self) -> list:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT p.*, u.full_name, u.username 
+                FROM payments p 
+                JOIN users u ON u.id = p.user_id 
+                WHERE p.status = 'pending'
+                ORDER BY p.created_at DESC
+                """
+            )
+        return [dict(r) for r in rows]
+        
+    async def get_payments_by_user(self, user_id: int) -> list:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT * FROM payments WHERE user_id = $1 ORDER BY created_at DESC", user_id
             )
         return [dict(r) for r in rows]
 
@@ -840,23 +893,20 @@ class Database:
         return user_id
 
     # ==========================================================================
-    # USERBOT SESSIONS (YANGI QO'SHILDI)
+    # USERBOT SESSIONS
     # ==========================================================================
     
     async def get_active_userbot_session(self) -> Optional[dict]:
-        """Faol userbot sessiyasini olish."""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM userbot_sessions WHERE is_active = TRUE ORDER BY added_at DESC LIMIT 1")
         return dict(row) if row else None
 
     async def get_all_userbot_sessions(self) -> list:
-        """Barcha userbot sessiyalari tarixi."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("SELECT id, phone, is_active, added_at FROM userbot_sessions ORDER BY added_at DESC")
         return [dict(r) for r in rows]
 
     async def deactivate_all_userbots(self):
-        """Barcha userbotlarni o'chirish."""
         async with self.pool.acquire() as conn:
             await conn.execute("UPDATE userbot_sessions SET is_active = FALSE")
 
@@ -871,6 +921,7 @@ class Database:
             pending_ads = await conn.fetchval("SELECT COUNT(*) FROM ads WHERE status = 'pending'") or 0
             total_cards = await conn.fetchval("SELECT COUNT(*) FROM cards") or 0
             pending_payments = await conn.fetchval("SELECT COUNT(*) FROM payments WHERE status = 'pending'") or 0
+            total_payments = await conn.fetchval("SELECT COUNT(*) FROM payments WHERE status = 'paid'") or 0
 
             today_income = await conn.fetchval(
                 "SELECT COALESCE(SUM(price_paid), 0) FROM ads WHERE price_paid > 0 AND created_at >= CURRENT_DATE"
@@ -903,6 +954,7 @@ class Database:
             "pending_ads": int(pending_ads),
             "total_cards": int(total_cards),
             "pending_payments": int(pending_payments),
+            "total_payments": int(total_payments),
             "today_income": int(today_income),
             "yesterday_income": int(yesterday_income),
             "week_income": int(week_income),
