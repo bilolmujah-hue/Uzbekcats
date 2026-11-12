@@ -2,7 +2,8 @@
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: api.py
 # TAVSIF: FastAPI Backend — Frontend bilan to'liq moslashtirilgan, rasm/video
-#         yuklashdagi xatolar bartaraf etilgan, mukammal versiya.
+#         xatolari bartaraf etilgan, Admin panel (Userbot, Sozlamalar, Tahrirlash) 
+#         uchun to'liq kengaytirilgan versiya.
 # ==============================================================================
 
 import hashlib
@@ -25,7 +26,7 @@ from aiogram import Bot as AiogramBot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
-from aiogram.exceptions import TelegramBadRequest # Xatoni ushlash uchun qo'shildi
+from aiogram.exceptions import TelegramBadRequest
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
@@ -51,7 +52,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="UzbekCats API",
     description="Telegram Web App va Bot uchun Backend API",
-    version="2.2.0",
+    version="2.3.0",
 )
 
 app.add_middleware(
@@ -78,7 +79,7 @@ except Exception as e:
 
 
 # ==============================================================================
-# PYDANTIC MODELLARI (Faqat qo'shimcha endpointlar uchun)
+# PYDANTIC MODELLARI
 # ==============================================================================
 
 class TelegramAuthRequest(BaseModel):
@@ -128,6 +129,17 @@ class AdminPaymentAction(BaseModel):
     reason: Optional[str] = None
 
 
+class AdEditRequest(BaseModel):
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    price: Optional[str] = None
+    currency: Optional[str] = None
+
+
+class SettingsUpdateRequest(BaseModel):
+    ad_duration_days: Optional[int] = None
+
+
 # ==============================================================================
 # AUTENTIFIKATSIYA
 # ==============================================================================
@@ -136,7 +148,6 @@ MAX_INIT_DATA_AGE = 86400  # 24 soat
 
 
 def verify_telegram_webapp_data(init_data: str) -> dict:
-    """Telegram WebApp initData ni HMAC-SHA256 bilan tekshiradi."""
     if not init_data:
         raise HTTPException(401, "initData bo'sh")
 
@@ -218,15 +229,12 @@ async def check_admin(current_user: dict = Depends(get_current_user)) -> dict:
 
 def _parse_photos(photos) -> list:
     if isinstance(photos, str):
-        try:
-            photos = json.loads(photos)
-        except json.JSONDecodeError:
-            photos = []
+        try: photos = json.loads(photos)
+        except: photos = []
     return photos if isinstance(photos, list) else []
 
 
 async def _post_ad_to_channel(ad_data: dict) -> dict:
-    """API orqali kanalga post yuborish (Video va Rasm xatosi to'liq tuzatildi)."""
     if api_bot is None:
         raise HTTPException(500, "Bot instansiyasi mavjud emas")
 
@@ -263,22 +271,14 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
     )
 
     if ad_type == "sotish":
-        caption = (
-            f"#SOTILADI 💰\n\n"
-            f"{cats_text}\n"
-            f"📍 Manzil: {address}\n💵 Narxi: {price} {currency}\n📞 Tel: {phone}\n\n{footer}"
-        )
+        caption = f"#SOTILADI 💰\n\n{cats_text}\n📍 Manzil: {address}\n💵 Narxi: {price} {currency}\n📞 Tel: {phone}\n\n{footer}"
         target = BotConfig.CHANNEL_SOTISH_ID
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🎁 Hadiya kanal", url=BotConfig.CHANNEL_HADIYA_LINK)],
             [InlineKeyboardButton(text="📢 Reklama berish", url=BotConfig.BOT_LINK)],
         ])
     elif ad_type == "hadiya":
-        caption = (
-            f"#HADIYA 🎁\n\n"
-            f"{cats_text}\n"
-            f"📍 Manzil: {address}\n📞 Tel: {phone}\n\n{footer}"
-        )
+        caption = f"#HADIYA 🎁\n\n{cats_text}\n📍 Manzil: {address}\n📞 Tel: {phone}\n\n{footer}"
         target = BotConfig.CHANNEL_HADIYA_ID
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💰 Sotiladi kanal", url=BotConfig.CHANNEL_SOTISH_LINK)],
@@ -288,7 +288,7 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
         raise HTTPException(400, f"Noma'lum ad_type: {ad_type}")
 
     photos = _parse_photos(ad_data.get("photos"))
-    media_type = ad_data.get("media_type", "photo") # 🔴 BAZADAGI TURGA QARAB ANIQLAYMIZ
+    media_type = ad_data.get("media_type", "photo")
 
     try:
         if len(photos) > 1:
@@ -325,8 +325,7 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
 
 
 async def _refund_ad(user_id: int, amount: int):
-    if amount <= 0:
-        return
+    if amount <= 0: return
     try:
         await db.update_user_balance(user_id, amount, operation="add")
         logger.info(f"💸 Refund: user={user_id} amount={amount}")
@@ -345,6 +344,12 @@ async def health():
 
 @app.get("/api/config")
 async def get_frontend_config():
+    ad_days = await db.get_setting("ad_duration_days", str(Settings.WEB_AD_DAYS))
+    try:
+        ad_days_int = int(ad_days)
+    except:
+        ad_days_int = Settings.WEB_AD_DAYS
+
     return {
         "bot_username": BotConfig.BOT_USERNAME,
         "bot_link": BotConfig.BOT_LINK,
@@ -356,7 +361,7 @@ async def get_frontend_config():
         "tariffs": WebAppConfig.TARIFFS,
         "min_topup": Settings.MIN_TOPUP_AMOUNT,
         "topup_timer_minutes": Settings.TOPUP_TIMER_MINUTES,
-        "web_ad_days": Settings.WEB_AD_DAYS,
+        "web_ad_days": ad_days_int,
         "viloyatlar": DataLists.VILOYATLAR,
         "ages": DataLists.AGES,
         "breeds": DataLists.BREEDS,
@@ -364,7 +369,7 @@ async def get_frontend_config():
 
 
 # ==============================================================================
-# 2. RASM YUKLASH (Dinamik URL bilan xato tuzatildi)
+# 2. RASM YUKLASH
 # ==============================================================================
 
 @app.post("/api/upload")
@@ -373,7 +378,6 @@ async def upload_image(
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user)
 ):
-    """Web App dan rasmlarni serverga yuklash va to'liq URL qaytarish."""
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
     if ext not in ("jpg", "jpeg", "png", "webp", "mp4", "mov"):
         raise HTTPException(400, "Faqat rasm yoki video formatlar ruxsat etilgan")
@@ -446,20 +450,19 @@ async def get_active_ads():
 @app.get("/api/ads/{ad_id}")
 async def get_ad(ad_id: int):
     async with db.pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM ads WHERE id = $1 AND status = 'approved'", ad_id
-        )
+        row = await conn.fetchrow("SELECT * FROM ads WHERE id = $1 AND status = 'approved'", ad_id)
     if not row:
         raise HTTPException(404, "Reklama topilmadi")
     return dict(row)
 
 
-# 🔴 FRONTEND BILAN MOSLASHTIRILGAN FORMDATA QABUL QILUVCHI ENDPOINT
+# 🔴 RASM URL LARI TO'LIQ MANZIL BILAN QAYTARILADI
 @app.post("/api/ads")
 async def create_ad(
+    request: Request, # To'liq URL olish uchun
     tariff: str = Form(...),
     cat_count: int = Form(...),
-    cats_data: str = Form(...), # JSON string ko'rinishida keladi
+    cats_data: str = Form(...),
     address: str = Form(...),
     phone: str = Form(...),
     price: str = Form("0"),
@@ -479,36 +482,32 @@ async def create_ad(
     if user["balance"] < price_val:
         raise HTTPException(402, Texts.ERROR_INSUFFICIENT_BALANCE.format(price=price_val, balance=user["balance"]))
 
-    # Balansdan yechish
     try:
         await db.update_user_balance(user["id"], price_val, operation="subtract")
     except ValueError:
         raise HTTPException(402, Texts.ERROR_BALANCE_SUBTRACT)
 
-    # Rasmlarni serverga saqlash
     saved_photos = []
+    base_url = str(request.base_url).rstrip("/")
+    
     if photos:
         for file in photos:
-            if not file.filename:
-                continue
+            if not file.filename: continue
             ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
             safe_name = f"ad_{user['id']}_{uuid.uuid4().hex[:8]}.{ext}"
             safe_path = os.path.join(UPLOAD_DIR, safe_name)
             
             content = await file.read()
             if len(content) > 10 * 1024 * 1024:
-                await _refund_ad(user["id"], price_val) # Xato bo'lsa pulni qaytarish
+                await _refund_ad(user["id"], price_val)
                 raise HTTPException(400, "Fayl hajmi 10MB dan oshmasin")
                 
             with open(safe_path, "wb") as f:
                 f.write(content)
                 
-            # URL yasash (Hozircha lokal URL, keyinchalik Railway domeni oladi)
-            # Dinamik domen olish uchun Request kerak, lekin soddalik uchun nisbiy yo'l saqlaymiz
-            # Frontend buni API_BASE orqali to'liq manzilga aylantiradi.
-            saved_photos.append(f"/uploads/{safe_name}")
+            # Mutlaqo to'liq URL manzil yasaymiz (Frontendda qora fon bo'lib qolmasligi uchun)
+            saved_photos.append(f"{base_url}/uploads/{safe_name}")
 
-    # Cats datani parse qilish
     try:
         cats_data_list = json.loads(cats_data)
     except json.JSONDecodeError:
@@ -536,29 +535,18 @@ async def create_ad(
         logger.exception("create_ad xatosi")
         raise HTTPException(500, f"Reklama yaratilmadi: {str(e)[:200]}")
 
-    return {
-        "status": "success",
-        "message": "Reklama yaratildi va admin tasdiqlashini kutmoqda",
-        "ad": new_ad,
-        "charged": price_val,
-    }
+    return {"status": "success", "message": "Reklama yaratildi va admin tasdiqlashini kutmoqda", "ad": new_ad, "charged": price_val}
 
 
 @app.delete("/api/ads/{ad_id}")
 async def delete_my_ad(ad_id: int, user: dict = Depends(get_current_user)):
     async with db.pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM ads WHERE id = $1 AND user_id = $2", ad_id, user["id"]
-        )
+        row = await conn.fetchrow("SELECT * FROM ads WHERE id = $1 AND user_id = $2", ad_id, user["id"])
         if not row:
             raise HTTPException(404, "Reklama topilmadi")
         if row["status"] not in ("pending", "approved"):
             raise HTTPException(400, "Bu reklamani o'chirib bo'lmaydi")
-
-        await conn.execute(
-            "UPDATE ads SET status = 'rejected', reject_reason = 'Foydalanuvchi o\'chirdi' WHERE id = $1",
-            ad_id,
-        )
+        await conn.execute("UPDATE ads SET status = 'rejected', reject_reason = 'Foydalanuvchi o''chirdi' WHERE id = $1", ad_id)
     return {"status": "success", "message": "Reklama o'chirildi"}
 
 
@@ -569,10 +557,7 @@ async def get_rating():
     for u in top_users:
         name = u.get("full_name") or "Foydalanuvchi"
         result.append({
-            "id": u["id"],
-            "name": name,
-            "score": u["score"],
-            "user_number": u.get("user_number"),
+            "id": u["id"], "name": name, "score": u["score"], "user_number": u.get("user_number"),
             "avatar": f"https://ui-avatars.com/api/?name={urllib.parse.quote(name)}&background=3B82F6&color=fff",
         })
     return result
@@ -585,22 +570,16 @@ async def get_rating():
 @app.post("/api/topup")
 async def create_topup(req: TopUpRequest, user: dict = Depends(get_current_user)):
     card = await db.get_active_card()
-    if not card:
-        raise HTTPException(404, Texts.TOPUP_NO_CARD)
-
+    if not card: raise HTTPException(404, Texts.TOPUP_NO_CARD)
     card_last4 = str(card["number"])[-4:]
     try:
         payment_id = await db.create_payment_request(user["id"], req.amount, card["id"], card_last4)
     except Exception as e:
-        logger.exception("create_payment_request xatosi")
         raise HTTPException(500, f"To'lov yaratilmadi: {str(e)[:200]}")
 
     return {
-        "payment_id": payment_id,
-        "card_number": card["number"],
-        "card_holder": card["holder"],
-        "amount": req.amount,
-        "timer_seconds": Settings.TOPUP_TIMER_MINUTES * 60,
+        "payment_id": payment_id, "card_number": card["number"], "card_holder": card["holder"],
+        "amount": req.amount, "timer_seconds": Settings.TOPUP_TIMER_MINUTES * 60,
         "expires_at": (datetime.utcnow() + timedelta(minutes=Settings.TOPUP_TIMER_MINUTES)).isoformat(),
     }
 
@@ -608,17 +587,11 @@ async def create_topup(req: TopUpRequest, user: dict = Depends(get_current_user)
 @app.get("/api/topup/status/{payment_id}")
 async def topup_status(payment_id: int, user: dict = Depends(get_current_user)):
     async with db.pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT id, amount, status, created_at, expires_at, receipt_file_id "
-            "FROM payments WHERE id = $1 AND user_id = $2",
-            payment_id, user["id"],
-        )
-    if not row:
-        raise HTTPException(404, "To'lov topilmadi")
+        row = await conn.fetchrow("SELECT id, amount, status, created_at, expires_at, receipt_file_id FROM payments WHERE id = $1 AND user_id = $2", payment_id, user["id"])
+    if not row: raise HTTPException(404, "To'lov topilmadi")
     return dict(row)
 
 
-# 🔴 REQUEST PARAMETRI QO'SHILDI
 @app.post("/api/topup/receipt")
 async def upload_receipt(
     request: Request,
@@ -627,62 +600,40 @@ async def upload_receipt(
     user: dict = Depends(get_current_user),
 ):
     async with db.pool.acquire() as conn:
-        payment = await conn.fetchrow(
-            "SELECT * FROM payments WHERE id = $1 AND user_id = $2",
-            payment_id, user["id"],
-        )
-    if not payment:
-        raise HTTPException(404, "To'lov topilmadi")
-    if payment["status"] != "pending":
-        raise HTTPException(400, "Bu to'lov allaqachon yopilgan")
-    if payment["expires_at"] < datetime.utcnow():
-        raise HTTPException(400, "To'lov muddati tugagan. Yangi so'rov yarating.")
+        payment = await conn.fetchrow("SELECT * FROM payments WHERE id = $1 AND user_id = $2", payment_id, user["id"])
+    if not payment: raise HTTPException(404, "To'lov topilmadi")
+    if payment["status"] != "pending": raise HTTPException(400, "Bu to'lov allaqachon yopilgan")
+    if payment["expires_at"] < datetime.utcnow(): raise HTTPException(400, "To'lov muddati tugagan. Yangi so'rov yarating.")
 
     filename = file.filename or "receipt.jpg"
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "jpg"
-    if ext not in ("jpg", "jpeg", "png", "webp", "pdf"):
-        raise HTTPException(400, "Faqat jpg, png, webp, pdf")
+    if ext not in ("jpg", "jpeg", "png", "webp", "pdf"): raise HTTPException(400, "Faqat jpg, png, webp, pdf")
 
     content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(400, "Fayl hajmi 10MB dan oshmasin")
-    if len(content) == 0:
-        raise HTTPException(400, "Bo'sh fayl")
+    if len(content) > 10 * 1024 * 1024: raise HTTPException(400, "Fayl hajmi 10MB dan oshmasin")
+    if len(content) == 0: raise HTTPException(400, "Bo'sh fayl")
 
     safe_name = f"receipt_{payment_id}_{user['id']}_{uuid.uuid4().hex[:8]}.{ext}"
     safe_path = os.path.join(UPLOAD_DIR, safe_name)
-    with open(safe_path, "wb") as f:
-        f.write(content)
+    with open(safe_path, "wb") as f: f.write(content)
 
     try:
         await db.attach_receipt(payment_id, safe_name)
     except Exception as e:
-        logger.exception("attach_receipt xatosi")
         raise HTTPException(500, f"Chek saqlanmadi: {str(e)[:200]}")
 
     if api_bot:
         try:
             card = await db.get_active_card()
             card_num = card["number"] if card else "Noma'lum"
-            
             await api_bot.send_message(
                 BotConfig.TECH_ADMIN_ID,
-                f"🧾 <b>Yangi chek (WebApp)!</b>\n\n"
-                f"👤 Foydalanuvchi: #{user['user_number']} ({user['full_name']})\n"
-                f"💰 Summa: {payment['amount']:,} so'm\n"
-                f"💳 Karta: {card_num}\n"
-                f"🆔 To'lov ID: <code>{payment_id}</code>\n\n"
-                f"Admin panel orqali tasdiqlang.",
+                f"🧾 <b>Yangi chek (WebApp)!</b>\n\n👤 Foydalanuvchi: #{user['user_number']} ({user['full_name']})\n💰 Summa: {payment['amount']:,} so'm\n💳 Karta: {card_num}\n🆔 To'lov ID: <code>{payment_id}</code>\n\nAdmin panel orqali tasdiqlang.",
             )
-        except Exception:
-            pass
+        except Exception: pass
 
     base_url = str(request.base_url).rstrip("/")
-    return {
-        "status": "success",
-        "message": "Chek yuklandi. Admin tasdiqlashini kuting.",
-        "receipt_url": f"{base_url}/uploads/{safe_name}",
-    }
+    return {"status": "success", "message": "Chek yuklandi. Admin tasdiqlashini kuting.", "receipt_url": f"{base_url}/uploads/{safe_name}"}
 
 
 # ==============================================================================
@@ -707,19 +658,15 @@ async def get_active_card_endpoint(admin: dict = Depends(check_admin)):
 
 @app.post("/api/admin/card")
 async def add_card(req: AddCardRequest, admin: dict = Depends(check_admin)):
-    try:
-        card_id = await db.add_card(req.number, req.holder)
-    except Exception as e:
-        logger.exception("add_card xatosi")
-        raise HTTPException(500, f"Karta qo'shilmadi: {str(e)[:200]}")
+    try: card_id = await db.add_card(req.number, req.holder)
+    except Exception as e: raise HTTPException(500, f"Karta qo'shilmadi: {str(e)[:200]}")
     return {"status": "success", "card_id": card_id, "message": "Karta o'zgartirildi"}
 
 
 @app.delete("/api/admin/card/{card_id}")
 async def delete_card(card_id: int, admin: dict = Depends(check_admin)):
     ok = await db.delete_card(card_id)
-    if not ok:
-         raise HTTPException(404, "Karta topilmadi")
+    if not ok: raise HTTPException(404, "Karta topilmadi")
     return {"status": "success", "message": "Karta o'chirildi"}
 
 
@@ -730,11 +677,7 @@ async def delete_card(card_id: int, admin: dict = Depends(check_admin)):
 @app.get("/api/admin/payments")
 async def list_payments(admin: dict = Depends(check_admin), limit: int = 100):
     async with db.pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT p.*, u.user_number, u.full_name, u.username "
-            "FROM payments p LEFT JOIN users u ON u.id = p.user_id "
-            "ORDER BY p.created_at DESC LIMIT $1", limit
-        )
+        rows = await conn.fetch("SELECT p.*, u.user_number, u.full_name, u.username FROM payments p LEFT JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT $1", limit)
     return [dict(r) for r in rows]
 
 
@@ -742,22 +685,15 @@ async def list_payments(admin: dict = Depends(check_admin), limit: int = 100):
 async def approve_payment(payment_id: int, admin: dict = Depends(check_admin)):
     async with db.pool.acquire() as conn:
         async with conn.transaction():
-            payment = await conn.fetchrow(
-                "SELECT * FROM payments WHERE id = $1 AND status = 'pending' FOR UPDATE",
-                payment_id,
-            )
-            if not payment:
-                raise HTTPException(404, "To'lov topilmadi yoki allaqachon yopilgan")
-
+            payment = await conn.fetchrow("SELECT * FROM payments WHERE id = $1 AND status = 'pending' FOR UPDATE", payment_id)
+            if not payment: raise HTTPException(404, "To'lov topilmadi yoki allaqachon yopilgan")
             await conn.execute("UPDATE payments SET status = 'paid', userbot_matched = FALSE WHERE id = $1", payment_id)
             await conn.execute("UPDATE users SET balance = balance + $1 WHERE id = $2", payment["amount"], payment["user_id"])
 
     if api_bot:
         try:
             await api_bot.send_message(payment["user_id"], f"✅ <b>To'lov tasdiqlandi!</b>\n\nHisobingizga {payment['amount']:,} so'm qo'shildi.")
-        except Exception:
-            pass
-
+        except Exception: pass
     return {"status": "success", "message": "To'lov tasdiqlandi"}
 
 
@@ -765,41 +701,33 @@ async def approve_payment(payment_id: int, admin: dict = Depends(check_admin)):
 async def reject_payment(payment_id: int, req: AdminPaymentAction, admin: dict = Depends(check_admin)):
     async with db.pool.acquire() as conn:
         payment = await conn.fetchrow("SELECT * FROM payments WHERE id = $1 AND status = 'pending'", payment_id)
-        if not payment:
-            raise HTTPException(404, "To'lov topilmadi yoki allaqachon yopilgan")
+        if not payment: raise HTTPException(404, "To'lov topilmadi yoki allaqachon yopilgan")
         await conn.execute("UPDATE payments SET status = 'cancelled' WHERE id = $1", payment_id)
 
     if api_bot:
         try:
             reason = (req.reason or "Sabab ko'rsatilmadi")[:200]
             await api_bot.send_message(payment["user_id"], f"❌ <b>To'lov rad etildi.</b>\n\nSabab: {reason}")
-        except Exception:
-            pass
-
+        except Exception: pass
     return {"status": "success", "message": "To'lov rad etildi"}
 
 
 # ==============================================================================
-# 8. ADMIN — FOYDALANUVCHILAR
+# 8. ADMIN — FOYDALANUVCHILAR (Kengaytirildi)
 # ==============================================================================
 
 @app.get("/api/admin/users")
-async def get_users(admin: dict = Depends(check_admin)):
-    return await db.get_all_users()
+async def get_users(admin: dict = Depends(check_admin), limit: int = 100, offset: int = 0):
+    return await db.get_all_users(limit, offset)
 
 
+# 🔴 FOYDALANUVCHI USTIGA BOSGANDA TO'LIQ MA'LUMOT OLISH
 @app.get("/api/admin/user/{telegram_id}")
 async def get_user_detail(telegram_id: int, admin: dict = Depends(check_admin)):
-    user = await db.get_user(telegram_id)
-    if not user:
-        raise HTTPException(404, "Foydalanuvchi topilmadi")
-
-    ads = await db.get_user_ads(telegram_id)
-    async with db.pool.acquire() as conn:
-        refs_count = await conn.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_id = $1", telegram_id)
-        paid_sum = await conn.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE user_id = $1 AND status = 'paid'", telegram_id)
-
-    return {"user": user, "ads": ads, "referrals_count": refs_count or 0, "paid_total": paid_sum or 0}
+    # Yangi db.py dagi maxsus funksiya orqali barchasini birdaniga olamiz
+    user_info = await db.get_user_full_info(telegram_id)
+    if not user_info: raise HTTPException(404, "Foydalanuvchi topilmadi")
+    return user_info
 
 
 @app.post("/api/admin/user/block")
@@ -818,24 +746,18 @@ async def unblock_user(req: AdminActionRequest, admin: dict = Depends(check_admi
 
 @app.post("/api/admin/user/balance")
 async def add_balance(req: AdminActionRequest, admin: dict = Depends(check_admin)):
-    if req.amount is None or req.amount == 0:
-        raise HTTPException(400, "To'g'ri summani kiriting")
-
+    if req.amount is None or req.amount == 0: raise HTTPException(400, "To'g'ri summani kiriting")
     op = "add" if req.amount > 0 else "subtract"
     try:
         new_bal = await db.update_user_balance(req.telegram_id, abs(req.amount), op)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    except Exception as e:
-        raise HTTPException(500, str(e)[:200])
+    except ValueError as e: raise HTTPException(400, str(e))
+    except Exception as e: raise HTTPException(500, str(e)[:200])
 
     if api_bot:
         try:
             msg = f"✅ Hisobingizga {req.amount:,} so'm qo'shildi." if req.amount > 0 else f"⚠️ Hisobingizdan {abs(req.amount):,} so'm yechildi."
             await api_bot.send_message(req.telegram_id, f"{msg}\n\n💰 Joriy balans: {new_bal:,} so'm")
-        except Exception:
-            pass
-
+        except Exception: pass
     return {"status": "success", "new_balance": new_bal}
 
 
@@ -856,8 +778,8 @@ async def get_pending_ads(admin: dict = Depends(check_admin)):
 
 
 @app.get("/api/admin/ads")
-async def get_all_ads(admin: dict = Depends(check_admin)):
-    return await db.get_all_ads()
+async def get_all_ads(admin: dict = Depends(check_admin), status: str = None):
+    return await db.get_all_ads(status_filter=status)
 
 
 @app.post("/api/admin/ads/approve/{ad_id}")
@@ -873,18 +795,15 @@ async def approve_ad(ad_id: int, admin: dict = Depends(check_admin)):
     if ad_data.get("tariff") in ("channel_only", "web_and_channel", "bot"):
         try:
             msg_info = await _post_ad_to_channel(ad_data)
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(500, f"Kanalga yuborilmadi: {str(e)[:200]}")
+        except HTTPException: raise
+        except Exception as e: raise HTTPException(500, f"Kanalga yuborilmadi: {str(e)[:200]}")
 
     await db.update_ad_status(ad_id, "approved", channel_message_id=msg_info["message_id"] if msg_info else None)
 
     if api_bot:
         try:
             await api_bot.send_message(ad_data["user_id"], "✅ <b>Sizning e'loningiz tasdiqlandi va kanalga joylandi!</b>")
-        except Exception:
-            pass
+        except Exception: pass
 
     return {"status": "success", "message": "Reklama tasdiqlandi", "channel_message_id": msg_info["message_id"] if msg_info else None}
 
@@ -902,9 +821,7 @@ async def reject_ad(ad_id: int, req: AdminPaymentAction, admin: dict = Depends(c
     if api_bot:
         try:
             await api_bot.send_message(ad_data["user_id"], f"❌ <b>E'loningiz rad etildi.</b>\n\nSabab: {reason}")
-        except Exception:
-            pass
-
+        except Exception: pass
     return {"status": "success", "message": "Reklama rad etildi"}
 
 
@@ -914,6 +831,20 @@ async def admin_delete_ad(ad_id: int, admin: dict = Depends(check_admin)):
         result = await conn.execute("DELETE FROM ads WHERE id = $1", ad_id)
     if result == "DELETE 0": raise HTTPException(404, "Reklama topilmadi")
     return {"status": "success", "message": "Reklama o'chirildi"}
+
+
+# 🔴 ADMIN UCHUN REKLAMANI TAHRIRLASH API'si QO'SHILDI
+@app.post("/api/admin/ads/{ad_id}/edit")
+async def admin_edit_ad(ad_id: int, req: AdEditRequest, admin: dict = Depends(check_admin)):
+    async with db.pool.acquire() as conn:
+        ad_row = await conn.fetchrow("SELECT * FROM ads WHERE id = $1", ad_id)
+    if not ad_row: raise HTTPException(404, "Reklama topilmadi")
+    
+    update_data = req.dict(exclude_unset=True)
+    if not update_data: raise HTTPException(400, "O'zgartirish uchun ma'lumot yo'q")
+    
+    await db.update_ad_details(ad_id, **update_data)
+    return {"status": "success", "message": "Reklama tahrirlandi"}
 
 
 # ==============================================================================
@@ -926,6 +857,27 @@ async def toggle_bot(admin: dict = Depends(check_admin)):
     new_val = "0" if current == "1" else "1"
     await db.set_setting("bot_enabled", new_val)
     return {"status": "success", "bot_enabled": new_val == "1"}
+
+
+# 🔴 YANGI: SOZLAMALARNI OLISH VA SAQLASH API'si
+@app.get("/api/admin/settings")
+async def get_settings(admin: dict = Depends(check_admin)):
+    ad_days = await db.get_setting("ad_duration_days", str(Settings.WEB_AD_DAYS))
+    bot_enabled = await db.get_setting("bot_enabled", "1")
+    return {
+        "ad_duration_days": int(ad_days) if ad_days.isdigit() else Settings.WEB_AD_DAYS,
+        "bot_enabled": bot_enabled == "1"
+    }
+
+
+@app.post("/api/admin/settings")
+async def update_settings(req: SettingsUpdateRequest, admin: dict = Depends(check_admin)):
+    if req.ad_duration_days is not None:
+        if req.ad_duration_days < 1 or req.ad_duration_days > 365:
+            raise HTTPException(400, "Muddat 1 kundan 365 kungacha bo'lishi kerak")
+        await db.set_setting("ad_duration_days", str(req.ad_duration_days))
+    
+    return {"status": "success", "message": "Sozlamalar saqlandi"}
 
 
 # ==============================================================================
@@ -945,7 +897,7 @@ async def get_referrals(telegram_id: int, admin: dict = Depends(check_admin)):
 
 
 # ==============================================================================
-# 12. ADMIN — USERBOT
+# 12. ADMIN — USERBOT (Kengaytirilgan)
 # ==============================================================================
 
 userbot_temp_sessions: dict = {}
@@ -953,9 +905,7 @@ userbot_temp_sessions: dict = {}
 
 @app.get("/api/admin/userbot/sessions")
 async def list_userbot_sessions(admin: dict = Depends(check_admin)):
-    async with db.pool.acquire() as conn:
-        rows = await conn.fetch("SELECT id, phone, is_active, added_at FROM userbot_sessions ORDER BY added_at DESC")
-    return [dict(r) for r in rows]
+    return await db.get_all_userbot_sessions()
 
 
 @app.post("/api/admin/userbot/send_code")
@@ -964,7 +914,6 @@ async def userbot_send_code(req: UserbotRequestCode, admin: dict = Depends(check
         client = TelegramClient(StringSession(), api_id=UserbotConfig.API_ID, api_hash=UserbotConfig.API_HASH)
         await client.connect()
         sent_code = await client.send_code_request(req.phone)
-
         userbot_temp_sessions[req.phone] = {
             "client": client,
             "phone_code_hash": sent_code.phone_code_hash,
@@ -988,10 +937,8 @@ async def userbot_verify_code(req: UserbotVerifyCode, admin: dict = Depends(chec
         await client.sign_in(req.phone, req.code, phone_code_hash=phone_code_hash)
     except SessionPasswordNeededError:
         if not req.password: raise HTTPException(401, "Ikkinchi bosqich paroli (2FA) kerak")
-        try:
-            await client.sign_in(password=req.password)
-        except Exception as e:
-            raise HTTPException(400, f"2FA parol xato: {str(e)[:200]}")
+        try: await client.sign_in(password=req.password)
+        except Exception as e: raise HTTPException(400, f"2FA parol xato: {str(e)[:200]}")
     except Exception as e:
         raise HTTPException(400, f"Kod xato: {str(e)[:200]}")
 
@@ -1013,13 +960,10 @@ async def userbot_verify_code(req: UserbotVerifyCode, admin: dict = Depends(chec
 
 @app.post("/api/admin/userbot/logout")
 async def userbot_logout(admin: dict = Depends(check_admin)):
-    async with db.pool.acquire() as conn:
-        await conn.execute("UPDATE userbot_sessions SET is_active = FALSE")
+    await db.deactivate_all_userbots()
     for phone, data in list(userbot_temp_sessions.items()):
-        try:
-            await data["client"].disconnect()
-        except Exception:
-            pass
+        try: await data["client"].disconnect()
+        except Exception: pass
         userbot_temp_sessions.pop(phone, None)
     return {"status": "success", "message": "Barcha sessiyalar o'chirildi"}
 
@@ -1038,17 +982,13 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     for phone, data in list(userbot_temp_sessions.items()):
-        try:
-            await data["client"].disconnect()
-        except Exception:
-            pass
+        try: await data["client"].disconnect()
+        except Exception: pass
         userbot_temp_sessions.pop(phone, None)
 
     if api_bot is not None:
-        try:
-            await api_bot.session.close()
-        except Exception:
-            pass
+        try: await api_bot.session.close()
+        except Exception: pass
 
     await db.disconnect()
     logger.info("🔌 API to'xtatildi")
