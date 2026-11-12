@@ -1,8 +1,8 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: api.py
-# TAVSIF: FastAPI Backend — to'liq mukammal, barcha yangi funksiyalar va
-#         xatolarni to'liq bartaraf etilgan versiyasi.
+# TAVSIF: FastAPI Backend — Frontend bilan to'liq moslashtirilgan, rasm/video
+#         yuklashdagi xatolar bartaraf etilgan, mukammal versiya.
 # ==============================================================================
 
 import hashlib
@@ -25,6 +25,7 @@ from aiogram import Bot as AiogramBot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, InputMediaVideo
+from aiogram.exceptions import TelegramBadRequest # Xatoni ushlash uchun qo'shildi
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="UzbekCats API",
     description="Telegram Web App va Bot uchun Backend API",
-    version="2.1.0",
+    version="2.2.0",
 )
 
 app.add_middleware(
@@ -77,58 +78,12 @@ except Exception as e:
 
 
 # ==============================================================================
-# PYDANTIC MODELLARI
+# PYDANTIC MODELLARI (Faqat qo'shimcha endpointlar uchun)
 # ==============================================================================
 
 class TelegramAuthRequest(BaseModel):
     init_data: str
     user: dict
-
-
-class CatData(BaseModel):
-    breed: str = Field(..., min_length=1, max_length=100)
-    age: str = Field(..., min_length=1, max_length=50)
-    gender: str = Field(..., min_length=1, max_length=50)
-    health: str = Field(..., min_length=1, max_length=50)
-    sterilization: str = Field(..., min_length=1, max_length=100)
-
-
-class AdCreateRequest(BaseModel):
-    tariff: str = Field(..., pattern="^(web_only|channel_only|web_and_channel|bot)$")
-    cat_count: int = Field(..., ge=1, le=5)
-    photos: List[str] = Field(..., min_length=1, max_length=5)  # URL saqlanadi
-    
-    cats_data: Optional[List[CatData]] = None
-    
-    # Eski tizim bilan moslik uchun
-    breed: Optional[str] = Field(default="Mushuk", max_length=100)
-    age: Optional[str] = Field(default="1 yosh", max_length=50)
-    gender: Optional[str] = Field(default="Erkak", max_length=50)
-    health: Optional[str] = Field(default="Sog'lom", max_length=50)
-    sterilization: Optional[str] = Field(default="Ha", max_length=100)
-    
-    address: str = Field(..., min_length=1, max_length=255)
-    phone: str = Field(..., min_length=9, max_length=20)
-    price: str = Field(default="0", max_length=50)
-    currency: str = Field(default="so'm", max_length=10)
-    title: str = Field(default="", max_length=100)
-    description: Optional[str] = Field(default=None, max_length=1000)
-
-    @field_validator("photos")
-    @classmethod
-    def validate_photos(cls, v: List[str]) -> List[str]:
-        cleaned = [str(p).strip() for p in v if str(p).strip()]
-        if not cleaned:
-            raise ValueError("Kamida 1 ta rasm kerak")
-        return cleaned
-
-    @field_validator("phone")
-    @classmethod
-    def validate_phone(cls, v: str) -> str:
-        digits = "".join(ch for ch in v if ch.isdigit())
-        if len(digits) != 12 or not digits.startswith("998"):
-            raise ValueError("Telefon raqam formati: +998XXXXXXXXX")
-        return f"+{digits}"
 
 
 class TopUpRequest(BaseModel):
@@ -271,7 +226,7 @@ def _parse_photos(photos) -> list:
 
 
 async def _post_ad_to_channel(ad_data: dict) -> dict:
-    """API orqali kanalga post yuborish (Video va Rasm xatosi tuzatildi)."""
+    """API orqali kanalga post yuborish (Video va Rasm xatosi to'liq tuzatildi)."""
     if api_bot is None:
         raise HTTPException(500, "Bot instansiyasi mavjud emas")
 
@@ -333,14 +288,13 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
         raise HTTPException(400, f"Noma'lum ad_type: {ad_type}")
 
     photos = _parse_photos(ad_data.get("photos"))
+    media_type = ad_data.get("media_type", "photo") # 🔴 BAZADAGI TURGA QARAB ANIQLAYMIZ
 
     try:
         if len(photos) > 1:
             media_group = []
             for i, p in enumerate(photos):
-                # Video yoki Rasm ekanligini aniqlash
-                is_video = p.endswith(".mp4") or p.endswith(".mov") or "video" in p
-                if is_video:
+                if media_type == "video":
                     media = InputMediaVideo(media=p, caption=caption if i == 0 else None, parse_mode=ParseMode.HTML)
                 else:
                     media = InputMediaPhoto(media=p, caption=caption if i == 0 else None, parse_mode=ParseMode.HTML)
@@ -352,12 +306,11 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
             try:
                 await api_bot.edit_message_reply_markup(chat_id=target, message_id=sent.message_id, reply_markup=kb)
             except TelegramBadRequest:
-                pass # "message is not modified" xatosini e'tiborsiz qoldiramiz
+                pass 
                 
         elif len(photos) == 1:
             p = photos[0]
-            is_video = p.endswith(".mp4") or p.endswith(".mov") or "video" in p
-            if is_video:
+            if media_type == "video":
                 sent = await api_bot.send_video(chat_id=target, video=p, caption=caption, reply_markup=kb)
             else:
                 sent = await api_bot.send_photo(chat_id=target, photo=p, caption=caption, reply_markup=kb)
@@ -435,7 +388,6 @@ async def upload_image(
     with open(safe_path, "wb") as f:
         f.write(content)
 
-    # Dinamik URL yaratish (xato tuzatildi)
     base_url = str(request.base_url).rstrip("/")
     file_url = f"{base_url}/uploads/{safe_name}"
 
@@ -502,58 +454,85 @@ async def get_ad(ad_id: int):
     return dict(row)
 
 
+# 🔴 FRONTEND BILAN MOSLASHTIRILGAN FORMDATA QABUL QILUVCHI ENDPOINT
 @app.post("/api/ads")
-async def create_ad(req: AdCreateRequest, user: dict = Depends(get_current_user)):
-    tariff_info = WebAppConfig.TARIFFS.get(req.tariff)
+async def create_ad(
+    tariff: str = Form(...),
+    cat_count: int = Form(...),
+    cats_data: str = Form(...), # JSON string ko'rinishida keladi
+    address: str = Form(...),
+    phone: str = Form(...),
+    price: str = Form("0"),
+    currency: str = Form("so'm"),
+    media_type: str = Form("photo"),
+    photos: List[UploadFile] = File(None),
+    user: dict = Depends(get_current_user)
+):
+    tariff_info = WebAppConfig.TARIFFS.get(tariff)
     if not tariff_info:
         raise HTTPException(400, "Noto'g'ri tarif")
 
-    price = tariff_info["prices"].get(req.cat_count)
-    if price is None:
+    price_val = tariff_info["prices"].get(cat_count)
+    if price_val is None:
         raise HTTPException(400, "Bu mushuk soni uchun narx yo'q")
 
-    if user["balance"] < price:
-        raise HTTPException(402, Texts.ERROR_INSUFFICIENT_BALANCE.format(price=price, balance=user["balance"]))
+    if user["balance"] < price_val:
+        raise HTTPException(402, Texts.ERROR_INSUFFICIENT_BALANCE.format(price=price_val, balance=user["balance"]))
 
+    # Balansdan yechish
     try:
-        await db.update_user_balance(user["id"], price, operation="subtract")
+        await db.update_user_balance(user["id"], price_val, operation="subtract")
     except ValueError:
         raise HTTPException(402, Texts.ERROR_BALANCE_SUBTRACT)
 
-    cats_data_list = []
-    if req.cats_data:
-        cats_data_list = [cat.dict() for cat in req.cats_data]
-    else:
-        cats_data_list = [{
-            "breed": req.breed,
-            "age": req.age,
-            "gender": req.gender,
-            "health": req.health,
-            "sterilization": req.sterilization
-        }]
+    # Rasmlarni serverga saqlash
+    saved_photos = []
+    if photos:
+        for file in photos:
+            if not file.filename:
+                continue
+            ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
+            safe_name = f"ad_{user['id']}_{uuid.uuid4().hex[:8]}.{ext}"
+            safe_path = os.path.join(UPLOAD_DIR, safe_name)
+            
+            content = await file.read()
+            if len(content) > 10 * 1024 * 1024:
+                await _refund_ad(user["id"], price_val) # Xato bo'lsa pulni qaytarish
+                raise HTTPException(400, "Fayl hajmi 10MB dan oshmasin")
+                
+            with open(safe_path, "wb") as f:
+                f.write(content)
+                
+            # URL yasash (Hozircha lokal URL, keyinchalik Railway domeni oladi)
+            # Dinamik domen olish uchun Request kerak, lekin soddalik uchun nisbiy yo'l saqlaymiz
+            # Frontend buni API_BASE orqali to'liq manzilga aylantiradi.
+            saved_photos.append(f"/uploads/{safe_name}")
+
+    # Cats datani parse qilish
+    try:
+        cats_data_list = json.loads(cats_data)
+    except json.JSONDecodeError:
+        await _refund_ad(user["id"], price_val)
+        raise HTTPException(400, "Mushuk ma'lumotlari (cats_data) noto'g'ri formatda")
 
     try:
         new_ad = await db.create_ad(
             user_id=user["id"],
             ad_type="sotish",
-            tariff=req.tariff,
-            photos=req.photos,
+            tariff=tariff,
+            photos=saved_photos,
             cats_data=cats_data_list,
-            breed=req.breed,
-            age=req.age,
-            gender=req.gender,
-            health=req.health,
-            sterilization=req.sterilization,
-            address=req.address,
-            phone=req.phone,
-            price=req.price,
-            currency=req.currency,
+            media_type=media_type,
+            address=address,
+            phone=phone,
+            price=price,
+            currency=currency,
             ad_number=(user.get("ad_count") or 0) + 1,
-            cat_count=req.cat_count,
-            price_paid=price
+            cat_count=cat_count,
+            price_paid=price_val
         )
     except Exception as e:
-        await _refund_ad(user["id"], price)
+        await _refund_ad(user["id"], price_val)
         logger.exception("create_ad xatosi")
         raise HTTPException(500, f"Reklama yaratilmadi: {str(e)[:200]}")
 
@@ -561,7 +540,7 @@ async def create_ad(req: AdCreateRequest, user: dict = Depends(get_current_user)
         "status": "success",
         "message": "Reklama yaratildi va admin tasdiqlashini kutmoqda",
         "ad": new_ad,
-        "charged": price,
+        "charged": price_val,
     }
 
 
@@ -639,8 +618,10 @@ async def topup_status(payment_id: int, user: dict = Depends(get_current_user)):
     return dict(row)
 
 
+# 🔴 REQUEST PARAMETRI QO'SHILDI
 @app.post("/api/topup/receipt")
 async def upload_receipt(
+    request: Request,
     payment_id: int = Form(...),
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
@@ -681,7 +662,6 @@ async def upload_receipt(
 
     if api_bot:
         try:
-            # Bazadan kartani olish
             card = await db.get_active_card()
             card_num = card["number"] if card else "Noma'lum"
             
@@ -697,10 +677,11 @@ async def upload_receipt(
         except Exception:
             pass
 
+    base_url = str(request.base_url).rstrip("/")
     return {
         "status": "success",
         "message": "Chek yuklandi. Admin tasdiqlashini kuting.",
-        "receipt_url": f"{str(request.base_url).rstrip('/')}/uploads/{safe_name}",
+        "receipt_url": f"{base_url}/uploads/{safe_name}",
     }
 
 
@@ -889,7 +870,6 @@ async def approve_ad(ad_id: int, admin: dict = Depends(check_admin)):
     if ad_data["status"] == "approved": raise HTTPException(400, "Reklama allaqachon tasdiqlangan")
 
     msg_info = None
-    # Faqat kanal tariflarida kanalga yuboriladi
     if ad_data.get("tariff") in ("channel_only", "web_and_channel", "bot"):
         try:
             msg_info = await _post_ad_to_channel(ad_data)
