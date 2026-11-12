@@ -1,8 +1,9 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: bot.py
-# TAVSIF: To'liq xatosiz, video/rasm muammolari, zotlar sahifalash va
-#         FSM state xatolari to'liq bartaraf etilgan versiya.
+# TAVSIF: To'liq xatosiz, video/rasm muammolari, media guruhlarga tugma qo'shish,
+#         FSM state xatolari bartaraf etilgan, kengaytirilgan Admin panel.
+#         (Eski koddan ko'ra ko'proq funksiyalar)
 # ==============================================================================
 
 import asyncio
@@ -16,8 +17,8 @@ from html import escape as html_escape
 from aiogram import Bot, Dispatcher, F, Router, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import CommandStart
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -98,12 +99,19 @@ async def safe_delete(message: Message):
     except Exception:
         pass
 
+async def safe_edit_caption(message: Message, caption: str, reply_markup=None):
+    try:
+        await message.edit_caption(caption=caption, reply_markup=reply_markup)
+    except Exception:
+        pass
+
 # =====================================================================
-# USERBOT (To'lovlarni avtomatik tasdiqlash)
+# USERBOT (To'lovlarni avtomatik tasdiqlash va Boshqaruv)
 # =====================================================================
 async def start_userbot(session_string: str):
     global userbot_client
     if not session_string or len(session_string) < 10:
+        logger.warning("Userbot sessiyasi bo'sh yoki noto'g'ri.")
         return
     try:
         if userbot_client and userbot_client.is_connected():
@@ -117,7 +125,7 @@ async def start_userbot(session_string: str):
         await userbot_client.connect()
 
         if not await userbot_client.is_user_authorized():
-            logger.error("❌ Userbot sessiyasi eskirgan yoki yaroqsiz!")
+            logger.error("❌ Userbot sessiyasi eskirgan yoki yaroqsiz! Web App orqali qaytadan ulang.")
             await userbot_client.disconnect()
             userbot_client = None
             return
@@ -137,6 +145,7 @@ async def start_userbot(session_string: str):
                 if user_id:
                     try:
                         await bot.send_message(user_id, Texts.TOPUP_PAID.format(amount=amount))
+                        logger.info(f"✅ Userbot to'lovni tasdiqladi: user={user_id}, amount={amount}")
                     except Exception:
                         pass
             except Exception as e:
@@ -275,7 +284,6 @@ def get_viloyat_kb() -> InlineKeyboardMarkup:
     kb = [[InlineKeyboardButton(text=v, callback_data=f"viloyat_{i}")] for i, v in enumerate(DataLists.VILOYATLAR)]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-# 🔴 ZOTLAR KLAVIATURASI TO'G'RILANDI (Sahifalash)
 def get_breed_kb(page: int = 0) -> InlineKeyboardMarkup:
     kb, row = [], []
     start_idx = page * 10
@@ -301,7 +309,6 @@ def get_breed_kb(page: int = 0) -> InlineKeyboardMarkup:
     kb.append([InlineKeyboardButton(text="✏️ O'zim yozaman", callback_data="breed_custom")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
-# 🔴 YOSH KLAVIATURASI TO'G'RILANDI (Indeks bo'yicha)
 def get_age_kb() -> InlineKeyboardMarkup:
     kb, row = [], []
     for i, age in enumerate(DataLists.AGES):
@@ -365,7 +372,6 @@ async def post_to_channel(ad_data: dict):
         try: photos = json.loads(photos)
         except: photos = []
     
-    # 🔴 MEDIA_TYPE ORQALI ANIQLASH (XATO TUZATILDI)
     media_type = ad_data.get("media_type", "photo")
 
     try:
@@ -539,7 +545,7 @@ async def process_phone(message: Message, state: FSMContext):
 # ASOSIY MENYU
 # =====================================================================
 @router.callback_query(F.data == "menu_back_to_main")
-async def back_to_main(call: CallbackQuery, state: FSMContext): # 🔴 state parametri qo'shildi
+async def back_to_main(call: CallbackQuery, state: FSMContext):
     await state.clear()
     await safe_edit_text(call.message, Texts.MAIN_MENU, reply_markup=get_main_menu_kb(call.from_user.id in BotConfig.ADMIN_IDS))
 
@@ -779,7 +785,7 @@ async def menu_my_orders(call: CallbackQuery):
             try: photos = json.loads(photos)
             except: photos = []
             
-        media_type = ad.get("media_type", "photo") # Media_type bo'yicha aniqlash
+        media_type = ad.get("media_type", "photo")
             
         if photos:
             if media_type == "video":
@@ -811,7 +817,6 @@ async def user_mark_ad_done(call: CallbackQuery):
             
             new_caption = f"{old_caption}\n\n📍 Manzil: {address}\n📞 Tel: <i>Yashirilgan</i>\n\n✅ <b>E'LON {action_text.upper()}!</b>"
             
-            # Rasm yoki video bo'lsa captionni tahrirlash, matn bo'lsa textni tahrirlash
             if ad.get("photos") and len(ad.get("photos")) > 0:
                 await bot.edit_message_caption(chat_id=target_chat, message_id=ad["channel_message_id"], caption=new_caption, reply_markup=None)
             else:
@@ -929,7 +934,7 @@ async def process_custom_breed(message: Message, state: FSMContext):
 @router.callback_query(AdStates.choosing_age, F.data.startswith("age_"))
 async def process_age(call: CallbackQuery, state: FSMContext):
     age_idx = int(call.data.split("_")[1])
-    age = DataLists.AGES[age_idx] # Indeks bo'yicha to'g'ri olinadi
+    age = DataLists.AGES[age_idx]
     await state.update_data(current_age=age)
     data = await state.get_data()
     idx = data.get("current_cat_index", 1)
@@ -1086,7 +1091,7 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     new_ad = await db.create_ad(
         user_id=user["id"], ad_type=data.get("ad_type"), tariff="bot",
         photos=data.get("photos", []), cats_data=data.get("cats_data", []),
-        media_type=media_type, # 🔴 MEDIA TURI SAQLANDI
+        media_type=media_type,
         address=data.get("address"), phone=data.get("phone"), price=data.get("price", "0"),
         currency=data.get("currency", "so'm"), ad_number=(user.get("ad_count") or 0) + 1,
         cat_count=data.get("cat_count", 1), price_paid=price,
@@ -1101,6 +1106,7 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     for i, cat in enumerate(cats_data, 1):
         admin_caption += f"🐱 {i}-mushuk: {cat.get('breed')} | {cat.get('age')} | {cat.get('gender')}\n"
     
+    # 4-rasmdagi xato tuzatildi: Tech Adminga albatta tugmalar bilan boradi
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"admin_approve_ad_{new_ad['id']}"),
         InlineKeyboardButton(text="✏️ O'zgartirish", callback_data=f"admin_edit_ad_{new_ad['id']}"),
@@ -1116,6 +1122,7 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
                 if len(photos) > 1:
                     media_group = [InputMediaPhoto(media=p, caption=admin_caption if i==0 else None, parse_mode=ParseMode.HTML) for i, p in enumerate(photos)]
                     sent = await bot.send_media_group(BotConfig.TECH_ADMIN_ID, media=media_group)
+                    # Media guruhning 1-xabariga tugmalarni ulash
                     await bot.edit_message_reply_markup(chat_id=BotConfig.TECH_ADMIN_ID, message_id=sent[0].message_id, reply_markup=kb)
                 else:
                     await bot.send_photo(BotConfig.TECH_ADMIN_ID, photo=photos[0], caption=admin_caption, reply_markup=kb)
@@ -1278,7 +1285,7 @@ async def admin_cancel_edit(call: CallbackQuery, state: FSMContext):
     await state.clear()
 
 # =====================================================================
-# ADMIN PANEL
+# ADMIN PANEL (KENGAYTIRILGAN)
 # =====================================================================
 @router.callback_query(F.data == "admin_panel")
 async def admin_panel(call: CallbackQuery):
@@ -1300,9 +1307,39 @@ async def admin_panel(call: CallbackQuery):
         [InlineKeyboardButton(text="➕ Ball qo'shish", callback_data="admin_add_score")],
     ]
     if call.from_user.id == BotConfig.TECH_ADMIN_ID:
-        rows.append([InlineKeyboardButton(text="👨‍💻 Texnik Admin", callback_data="tech_admin_panel")])
+        rows.append([InlineKeyboardButton(text="👨‍💻 Texnik Admin (Userbot)", callback_data="tech_admin_panel")])
     rows.append([InlineKeyboardButton(text="↩️ Orqaga", callback_data="menu_back_to_main")])
     await safe_edit_text(call.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+@router.callback_query(F.data == "tech_admin_panel")
+async def tech_admin_panel(call: CallbackQuery):
+    if call.from_user.id != BotConfig.TECH_ADMIN_ID:
+        return
+    # Userbot holatini tekshirish
+    status_text = "❌ O'chirilgan"
+    if userbot_client and userbot_client.is_connected():
+        status_text = "✅ Ulangan"
+    
+    text = f"👨‍💻 <b>Texnik Admin Paneli</b>\n\n🤖 Userbot holati: {status_text}\n\nWeb App orqali userbotni boshqarishingiz mumkin."
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Userbotni yangilash", callback_data="admin_refresh_userbot")],
+        [InlineKeyboardButton(text="↩️ Orqaga", callback_data="admin_panel")]
+    ])
+    await safe_edit_text(call.message, text, reply_markup=kb)
+
+@router.callback_query(F.data == "admin_refresh_userbot")
+async def admin_refresh_userbot(call: CallbackQuery):
+    if call.from_user.id != BotConfig.TECH_ADMIN_ID:
+        return
+    try:
+        row = await db.get_active_userbot_session()
+        if row and row["session_string"]:
+            await start_userbot(row["session_string"])
+            await safe_answer(call, "✅ Userbot qayta ishga tushirildi!", show_alert=True)
+        else:
+            await safe_answer(call, "❌ Faol sessiya topilmadi!", show_alert=True)
+    except Exception as e:
+        await safe_answer(call, f"❌ Xatolik: {e}", show_alert=True)
 
 @router.callback_query(F.data == "admin_toggle_bot")
 async def admin_toggle_bot(call: CallbackQuery):
@@ -1397,6 +1434,7 @@ async def on_startup():
         pass
     logger.info("🚀 Bot polling boshlandi")
 
+    # Bazadagi faol userbot sessiyasini yuklash
     try:
         async with db.pool.acquire() as conn:
             row = await conn.fetchrow("SELECT session_string FROM userbot_sessions WHERE is_active = TRUE LIMIT 1")
