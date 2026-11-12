@@ -867,21 +867,29 @@ async def choose_ad_type(call: CallbackQuery, state: FSMContext):
     ad_type = call.data.replace("adtype_", "")
     await state.update_data(ad_type=ad_type)
     if ad_type == "sotish":
-        await safe_edit_text(call.message, "🐱 <b>💰 Reklama narxlari
-❗️ Iltimos, diqqat bilan tanishib chiqing!
-
-🐱 Mushuklaringizni nechta sotmoqchi bo'lsangiz, narx shunga qarab belgilanadi.
-
-📌 E'lon faqat 1 marta joylanadi, ammo mushugingiz sotilmaguncha kanaldan olib tashlanmaydi.
-
-💵 Narxlar:
-🐾 1 ta mushuk — 25 000 so'm
-🐾 2 ta mushuk — 45 000 so'm
-🐾 3 ta mushuk — 65 000 so'm
-🐾 4 ta mushuk — 85 000 so'm
-🐾 5 ta mushuk — 105 000 so'm
-
-👇 Siz nechta mushuk sotmoqchisiz?</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{i} ta mushuk", callback_data=f"catcount_{i}")] for i in range(1, 6)]))
+        text = (
+            "💰 <b>Reklama narxlari</b>\n"
+            "❗️ Iltimos, diqqat bilan tanishib chiqing!\n\n"
+            "🐱 Mushuklaringizni nechta sotmoqchi bo'lsangiz, narx shunga qarab belgilanadi.\n\n"
+            "📌 E'lon faqat 1 marta joylanadi, ammo mushugingiz sotilmaguncha kanaldan olib tashlanmaydi.\n\n"
+            "💵 <b>Narxlar:</b>\n"
+            "🐾 1 ta mushuk — 25 000 so'm\n"
+            "🐾 2 ta mushuk — 45 000 so'm\n"
+            "🐾 3 ta mushuk — 65 000 so'm\n"
+            "🐾 4 ta mushuk — 85 000 so'm\n"
+            "🐾 5 ta mushuk — 105 000 so'm\n\n"
+            "👇 <b>Siz nechta mushuk sotmoqchisiz?</b>"
+        )
+        await safe_edit_text(
+            call.message,
+            text,
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=f"{i} ta mushuk", callback_data=f"catcount_{i}")]
+                    for i in range(1, 6)
+                ]
+            ),
+        )
         await state.set_state(AdStates.choosing_cat_count)
     else:
         await safe_edit_text(call.message, Texts.MEDIA_ASK, reply_markup=get_media_type_kb())
