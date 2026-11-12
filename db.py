@@ -1,8 +1,8 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: db.py
-# TAVSIF: PostgreSQL + asyncpg — to'liq mukammal, barcha migratsiyalar, yangilangan
-#         to'lov tizimi, statistika, cats_data (JSONB) va barcha funksiyalar bilan.
+# TAVSIF: PostgreSQL + asyncpg — to'liq mukammal, xatosiz, migratsiyalar,
+#         media_type (rasm/video) va referal int64 cheklovlari bilan.
 # ==============================================================================
 
 import asyncio
@@ -93,38 +93,7 @@ class Database:
             )
         """)
 
-        # 🚨 ESKI BAZALARNI YANGILASH (MIGRATSIYA)
-        await conn.execute("""
-            DO $$
-            BEGIN
-                -- referred_by ustuni
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referred_by') THEN
-                    ALTER TABLE users ADD COLUMN referred_by BIGINT;
-                END IF;
-                
-                -- mute_until nomini tuzatish
-                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='muted_until') THEN
-                    ALTER TABLE users RENAME COLUMN muted_until TO mute_until;
-                END IF;
-
-                -- spent ustuni
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='spent') THEN
-                    ALTER TABLE users ADD COLUMN spent BIGINT DEFAULT 0;
-                END IF;
-
-                -- ad_count ustuni
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='ad_count') THEN
-                    ALTER TABLE users ADD COLUMN ad_count INT DEFAULT 0;
-                END IF;
-
-                -- warn_count ustuni (Xatoni tuzatadi)
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='warn_count') THEN
-                    ALTER TABLE users ADD COLUMN warn_count INT DEFAULT 0;
-                END IF;
-            END $$;
-        """)
-
-        # 2. ADS JADVALI (Yangi cats_data JSONB bilan)
+        # 2. ADS JADVALI (media_type ustuni bilan yangilandi)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS ads (
                 id SERIAL PRIMARY KEY,
@@ -133,6 +102,7 @@ class Database:
                 tariff TEXT,
                 photos JSONB DEFAULT '[]'::jsonb,
                 cats_data JSONB DEFAULT '[]'::jsonb,
+                media_type TEXT DEFAULT 'photo', -- 'photo' yoki 'video'
                 breed TEXT,
                 age TEXT,
                 gender TEXT,
@@ -153,17 +123,42 @@ class Database:
             )
         """)
 
-        # Migratsiya: Agar eski ads jadvalida cats_data bo'lmasa qo'shamiz
+        # 🚨 ESKI BAZALARNI YANGILASH (MIGRATSIYA)
         await conn.execute("""
             DO $$
             BEGIN
+                -- users: referred_by
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='referred_by') THEN
+                    ALTER TABLE users ADD COLUMN referred_by BIGINT;
+                END IF;
+                
+                -- users: mute_until (eski nomi muted_until bo'lsa)
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='muted_until') THEN
+                    ALTER TABLE users RENAME COLUMN muted_until TO mute_until;
+                END IF;
+
+                -- users: spent, ad_count, warn_count
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='spent') THEN
+                    ALTER TABLE users ADD COLUMN spent BIGINT DEFAULT 0;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='ad_count') THEN
+                    ALTER TABLE users ADD COLUMN ad_count INT DEFAULT 0;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='warn_count') THEN
+                    ALTER TABLE users ADD COLUMN warn_count INT DEFAULT 0;
+                END IF;
+
+                -- ads: cats_data, media_type
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ads' AND column_name='cats_data') THEN
                     ALTER TABLE ads ADD COLUMN cats_data JSONB DEFAULT '[]'::jsonb;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ads' AND column_name='media_type') THEN
+                    ALTER TABLE ads ADD COLUMN media_type TEXT DEFAULT 'photo';
                 END IF;
             END $$;
         """)
 
-        # 3. PAYMENTS JADVALI (To'lovlar uchun)
+        # 3. PAYMENTS JADVALI
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS payments (
                 id SERIAL PRIMARY KEY,
@@ -174,7 +169,7 @@ class Database:
                 receipt_file_id TEXT,
                 status TEXT DEFAULT 'pending',
                 userbot_matched BOOLEAN DEFAULT FALSE,
-                admin_message_id BIGINT, -- Admin xabarini tahrirlash uchun
+                admin_message_id BIGINT,
                 created_at TIMESTAMP DEFAULT NOW(),
                 expires_at TIMESTAMP
             )
@@ -240,7 +235,7 @@ class Database:
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_score ON users(score DESC)")
 
-        logger.info("✅ Jadvallar va indekslar tayyor")
+        logger.info("✅ Jadvallar, migratsiyalar va indekslar tayyor")
 
     # ==========================================================================
     # YORDAMCHI FUNKSIYALAR
@@ -307,11 +302,15 @@ class Database:
             phone = "+" + phone
 
         referrer_id = None
+        # 🚨 XATO TUZATILDI: int64 chegarasini tekshirish
         if referral_code and isinstance(referral_code, str) and referral_code.startswith("REF"):
             try:
-                rid = int(referral_code[3:])
-                if rid != telegram_id:
-                    referrer_id = rid
+                ref_str = referral_code[3:]
+                # PostgreSQL BIGINT (int64) chegarasi: -9223372036854775808 dan 9223372036854775807 gacha
+                if ref_str.isdigit() and len(ref_str) <= 18:
+                    rid = int(ref_str)
+                    if rid != telegram_id:
+                        referrer_id = rid
             except (ValueError, TypeError):
                 referrer_id = None
 
@@ -509,6 +508,7 @@ class Database:
         
         photos = kwargs.get("photos") or []
         cats_data = kwargs.get("cats_data") or []
+        media_type = kwargs.get("media_type", "photo") # Yangi qo'shildi
         
         breed = kwargs.get("breed")
         age = kwargs.get("age")
@@ -536,16 +536,16 @@ class Database:
                 row = await conn.fetchrow(
                     """
                     INSERT INTO ads (
-                        user_id, ad_type, tariff, photos, cats_data, breed, age, gender,
+                        user_id, ad_type, tariff, photos, cats_data, media_type, breed, age, gender,
                         health, sterilization, address, phone, price, currency,
                         ad_number, cat_count, price_paid, expires_at
                     ) VALUES (
                         $1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9, $10,
-                        $11, $12, $13, $14, $15, $16, $17, $18
+                        $11, $12, $13, $14, $15, $16, $17, $18, $19
                     ) RETURNING *
                     """,
-                    user_id, ad_type, tariff, photos_json, cats_data_json, breed, age, gender,
-                    health, sterilization, address, phone, price, currency,
+                    user_id, ad_type, tariff, photos_json, cats_data_json, media_type, 
+                    breed, age, gender, health, sterilization, address, phone, price, currency,
                     ad_number, cat_count, price_paid, expires_at,
                 )
                 await conn.execute(
@@ -637,7 +637,7 @@ class Database:
     async def update_ad_details(self, ad_id: int, **fields):
         allowed = {
             "breed", "age", "gender", "health", "sterilization",
-            "address", "phone", "price", "currency", "cat_count",
+            "address", "phone", "price", "currency", "cat_count", "media_type"
         }
         pairs = [(k, v) for k, v in fields.items() if k in allowed and v is not None]
         if not pairs:
