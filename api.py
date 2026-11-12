@@ -3,7 +3,7 @@
 # FAYL: api.py
 # TAVSIF: FastAPI Backend — Frontend bilan to'liq moslashtirilgan, rasm/video
 #         xatolari bartaraf etilgan, Admin panel (Userbot, Sozlamalar, Tahrirlash) 
-#         uchun to'liq kengaytirilgan versiya.
+#         uchun to'liq kengaytirilgan va xatosiz versiya.
 # ==============================================================================
 
 import hashlib
@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="UzbekCats API",
     description="Telegram Web App va Bot uchun Backend API",
-    version="2.3.0",
+    version="2.4.0", # Versiya yangilandi
 )
 
 app.add_middleware(
@@ -234,6 +234,14 @@ def _parse_photos(photos) -> list:
     return photos if isinstance(photos, list) else []
 
 
+def _is_video_url(url: str) -> bool:
+    """Faylning kengaytmasiga qarab video yoki rasm ekanligini aniqlash."""
+    if not isinstance(url, str):
+        return False
+    url_lower = url.lower()
+    return url_lower.endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm'))
+
+
 async def _post_ad_to_channel(ad_data: dict) -> dict:
     if api_bot is None:
         raise HTTPException(500, "Bot instansiyasi mavjud emas")
@@ -289,6 +297,15 @@ async def _post_ad_to_channel(ad_data: dict) -> dict:
 
     photos = _parse_photos(ad_data.get("photos"))
     media_type = ad_data.get("media_type", "photo")
+
+    # 🔴 XATO TUZATILDI: URL manzilga qarab ham tekshiramiz
+    if photos:
+        first_photo = photos[0]
+        if _is_video_url(first_photo):
+            media_type = "video"
+        elif first_photo.startswith('http') and media_type == "video":
+            # Agar URL bo'lsa-yu, video kengaytmasi bo'lmasa, rasm deb qabul qilamiz
+            media_type = "photo"
 
     try:
         if len(photos) > 1:
@@ -379,7 +396,7 @@ async def upload_image(
     user: dict = Depends(get_current_user)
 ):
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
-    if ext not in ("jpg", "jpeg", "png", "webp", "mp4", "mov"):
+    if ext not in ("jpg", "jpeg", "png", "webp", "mp4", "mov", "webm"):
         raise HTTPException(400, "Faqat rasm yoki video formatlar ruxsat etilgan")
 
     content = await file.read()
@@ -456,10 +473,9 @@ async def get_ad(ad_id: int):
     return dict(row)
 
 
-# 🔴 RASM URL LARI TO'LIQ MANZIL BILAN QAYTARILADI
 @app.post("/api/ads")
 async def create_ad(
-    request: Request, # To'liq URL olish uchun
+    request: Request,
     tariff: str = Form(...),
     cat_count: int = Form(...),
     cats_data: str = Form(...),
@@ -505,8 +521,12 @@ async def create_ad(
             with open(safe_path, "wb") as f:
                 f.write(content)
                 
-            # Mutlaqo to'liq URL manzil yasaymiz (Frontendda qora fon bo'lib qolmasligi uchun)
+            # To'liq URL manzil yasaymiz
             saved_photos.append(f"{base_url}/uploads/{safe_name}")
+            
+            # Media type ni rasm kengaytmasiga qarab ham tekshiramiz
+            if ext in ("mp4", "mov", "webm"):
+                media_type = "video"
 
     try:
         cats_data_list = json.loads(cats_data)
@@ -713,7 +733,7 @@ async def reject_payment(payment_id: int, req: AdminPaymentAction, admin: dict =
 
 
 # ==============================================================================
-# 8. ADMIN — FOYDALANUVCHILAR (Kengaytirildi)
+# 8. ADMIN — FOYDALANUVCHILAR
 # ==============================================================================
 
 @app.get("/api/admin/users")
@@ -721,10 +741,8 @@ async def get_users(admin: dict = Depends(check_admin), limit: int = 100, offset
     return await db.get_all_users(limit, offset)
 
 
-# 🔴 FOYDALANUVCHI USTIGA BOSGANDA TO'LIQ MA'LUMOT OLISH
 @app.get("/api/admin/user/{telegram_id}")
 async def get_user_detail(telegram_id: int, admin: dict = Depends(check_admin)):
-    # Yangi db.py dagi maxsus funksiya orqali barchasini birdaniga olamiz
     user_info = await db.get_user_full_info(telegram_id)
     if not user_info: raise HTTPException(404, "Foydalanuvchi topilmadi")
     return user_info
@@ -833,7 +851,6 @@ async def admin_delete_ad(ad_id: int, admin: dict = Depends(check_admin)):
     return {"status": "success", "message": "Reklama o'chirildi"}
 
 
-# 🔴 ADMIN UCHUN REKLAMANI TAHRIRLASH API'si QO'SHILDI
 @app.post("/api/admin/ads/{ad_id}/edit")
 async def admin_edit_ad(ad_id: int, req: AdEditRequest, admin: dict = Depends(check_admin)):
     async with db.pool.acquire() as conn:
@@ -859,7 +876,6 @@ async def toggle_bot(admin: dict = Depends(check_admin)):
     return {"status": "success", "bot_enabled": new_val == "1"}
 
 
-# 🔴 YANGI: SOZLAMALARNI OLISH VA SAQLASH API'si
 @app.get("/api/admin/settings")
 async def get_settings(admin: dict = Depends(check_admin)):
     ad_days = await db.get_setting("ad_duration_days", str(Settings.WEB_AD_DAYS))
@@ -897,7 +913,7 @@ async def get_referrals(telegram_id: int, admin: dict = Depends(check_admin)):
 
 
 # ==============================================================================
-# 12. ADMIN — USERBOT (Kengaytirilgan)
+# 12. ADMIN — USERBOT
 # ==============================================================================
 
 userbot_temp_sessions: dict = {}
