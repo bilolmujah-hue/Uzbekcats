@@ -465,7 +465,7 @@
         .stat-lbl { font-size: 11px; opacity: 0.8; margin-top: 4px; }
 
         .menu-list { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; margin-bottom: 20px; }
-        .menu-item { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); transition: background 0.2s; }
+        .menu-item { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); transition: background 0.2s; cursor: pointer; }
         .menu-item:active { background: var(--surface-2); }
         .menu-item:last-child { border-bottom: none; }
         .menu-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); color: var(--blue); display: flex; align-items: center; justify-content: center; margin-right: 16px; }
@@ -507,6 +507,7 @@
         .btn-outline:active { background: var(--surface-2); }
         .btn-danger { background: var(--red); color: #fff; }
         .btn-success { background: var(--green); color: #fff; }
+        .btn-sm { padding: 8px 12px; font-size: 13px; width: auto; }
 
         /* ==========================================================================
            8. NAVIGATSIYA
@@ -672,8 +673,27 @@
             border-radius: var(--radius-sm); 
             border: 1px solid var(--border); 
             margin-bottom: 8px;
+            cursor: pointer;
+            transition: 0.2s;
         }
+        .admin-list-item:active { background: var(--surface-2); }
         .admin-list-img { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; background: var(--surface-2); }
+
+        /* Ad details specific */
+        .ad-detail-img-container {
+            width: 100%;
+            height: 250px;
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 16px;
+            background: var(--surface-2);
+            position: relative;
+        }
+        .ad-detail-img-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
 
         /* UTIL */
         .spinner { border: 4px solid rgba(255,255,255,0.1); border-left-color: var(--blue); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
@@ -715,8 +735,6 @@
                 <button class="btn-topup" onclick="UI.showPage('p-topup')">+ To'ldirish</button>
             </div>
 
-            <!-- Qidiruv olib tashlandi (Sizning talabingizga ko'ra) -->
-            
             <div class="tabs">
                 <button class="tab active" onclick="Dashboard.setFilter('all', this)"><i data-feather="grid"></i> Hammasi</button>
                 <button class="tab" onclick="Dashboard.setFilter('new', this)"><i data-feather="clock"></i> Yangi (24 soat)</button>
@@ -748,14 +766,13 @@
                 <div style="text-align: center; color: var(--text-3); width: 100%;">Yuklanmoqda...</div>
             </div>
             <div class="grid-2" id="rating-list" style="grid-template-columns: 1fr;">
-                <!-- Skeleton -->
                 <div class="skeleton" style="height: 60px; margin-bottom: 8px;"></div>
                 <div class="skeleton" style="height: 60px; margin-bottom: 8px;"></div>
             </div>
         </div>
 
         <!-- =====================================================================
-             PAGE: TOPUP (HISOB TO'LDIRISH) - YANGI PREMIUM DIZAYN
+             PAGE: TOPUP (HISOB TO'LDIRISH)
              ===================================================================== -->
         <div class="page" id="p-topup">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
@@ -783,7 +800,6 @@
                 <button class="btn btn-primary" id="btn-topup-start" onclick="Topup.start()">Davom etish</button>
             </div>
 
-            <!-- To'lov ma'lumotlari (yashirin) -->
             <div id="topup-info" class="hidden" style="margin-top: 24px;">
                 <div class="timer-badge"><i data-feather="clock" style="width:16px;"></i> To'lov <span id="t-timer">10:00</span> ichida amalga oshirilishi kerak</div>
                 
@@ -798,17 +814,17 @@
                     <i data-feather="copy" style="width:16px;"></i> Karta raqamini nusxalash
                 </button>
 
-                <label class="file-upload" style="display: block; margin-bottom: 12px;">
+                <label class="file-upload" style="display: block; margin-bottom: 12px; border: 2px dashed var(--border); padding: 20px; border-radius: var(--radius-sm); text-align: center; cursor: pointer;">
                     <i data-feather="image" style="width:32px; height:32px; margin-bottom: 8px; color: var(--blue);"></i>
                     <div style="font-weight: 700; color: var(--text);">To'lov chekini yuklang</div>
-                    <div style="font-size: 12px;">Karta raqami va summa ko'rinishi shart</div>
+                    <div style="font-size: 12px; color: var(--text-3);">Karta raqami va summa ko'rinishi shart</div>
                     <input type="file" accept="image/*" style="display: none;" onchange="Topup.upload(this)">
                 </label>
             </div>
         </div>
 
         <!-- =====================================================================
-             PAGE: CREATE AD (REKLAMA BERISH WIZARD) - MUKAMMAL DIZAYN
+             PAGE: CREATE AD (REKLAMA BERISH WIZARD)
              ===================================================================== -->
         <div class="page" id="p-create">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
@@ -830,21 +846,19 @@
                 </div>
             </div>
 
-            <!-- Step 2: Tariff (Bosganda avtomatik o'tadi) -->
+            <!-- Step 2: Tariff -->
             <div class="wizard-step" id="w-step-2">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Tarifni tanlang</h3>
                 <div id="tariff-list"></div>
             </div>
 
-            <!-- Step 3: Media (1-3 ta rasm, o'chirish imkoniyati bilan) -->
+            <!-- Step 3: Media -->
             <div class="wizard-step" id="w-step-3">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Rasm yuklang (1-3 ta)</h3>
                 
-                <div class="photo-grid" id="uploaded-photos">
-                    <!-- JS tomonidan rasmlar qo'shiladi -->
-                </div>
+                <div class="photo-grid" id="uploaded-photos"></div>
 
-                <label class="file-upload" id="upload-label" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+                <label class="file-upload" id="upload-label" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; border: 2px dashed var(--border); border-radius: var(--radius-sm); cursor: pointer;">
                     <i data-feather="camera" style="width:32px; height:32px; margin-bottom: 8px; color: var(--blue);"></i>
                     <div style="font-weight: 700; color: var(--text);">Rasm qo'shish</div>
                     <input type="file" accept="image/*" multiple style="display: none;" onchange="CreateAd.handleFiles(this)">
@@ -853,23 +867,19 @@
                 <button class="btn btn-primary" onclick="CreateAd.nextStep(4)" style="margin-top: 16px;">Davom etish</button>
             </div>
 
-            <!-- Step 4: Cat Details (Dinamik, Tugmalar orqali) -->
+            <!-- Step 4: Cat Details -->
             <div class="wizard-step" id="w-step-4">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;" id="cat-detail-title">1-mushuk ma'lumotlari</h3>
                 
                 <div class="card" style="padding: 20px; margin-bottom: 16px;">
                     <div class="input-group">
                         <label class="label">Zoti</label>
-                        <div class="option-grid" id="c-breed-grid">
-                            <!-- JS orqali tugmalar chiqariladi -->
-                        </div>
+                        <div class="option-grid" id="c-breed-grid"></div>
                     </div>
 
                     <div class="input-group">
                         <label class="label">Yoshi</label>
-                        <div class="option-grid" id="c-age-grid">
-                            <!-- JS orqali tugmalar chiqariladi -->
-                        </div>
+                        <div class="option-grid" id="c-age-grid"></div>
                     </div>
 
                     <div class="input-group">
@@ -891,15 +901,13 @@
                 <button class="btn btn-primary" onclick="CreateAd.saveCat()">Keyingisi</button>
             </div>
 
-            <!-- Step 5: Location & Contact -->
+            <!-- Step 5: Location -->
             <div class="wizard-step" id="w-step-5">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Manzil va Aloqa</h3>
                 
                 <div class="input-group">
                     <label class="label">Viloyat/Shahar</label>
-                    <div class="option-grid" id="c-region-grid">
-                        <!-- JS orqali tugmalar chiqariladi -->
-                    </div>
+                    <div class="option-grid" id="c-region-grid"></div>
                 </div>
 
                 <div class="input-group">
@@ -907,7 +915,7 @@
                     <input type="text" class="input" id="ad-phone" placeholder="+998 90 123 45 67" value="+998">
                 </div>
                 <div class="input-group">
-                    <label class="label">Telegram Username</label>
+                    <label class="label">Telegram Username (ixtiyoriy)</label>
                     <div style="display: flex; gap: 8px;">
                         <input type="text" class="input" id="ad-username" placeholder="@username">
                         <button class="btn btn-outline" style="width: auto; padding: 0 16px;" onclick="CreateAd.fillUsername()">O'zimniki</button>
@@ -916,7 +924,7 @@
                 <button class="btn btn-primary" onclick="CreateAd.nextStep(6)">Davom etish</button>
             </div>
 
-            <!-- Step 6: Price & Currency -->
+            <!-- Step 6: Price -->
             <div class="wizard-step" id="w-step-6">
                 <h3 style="font-size: 18px; font-weight: 800; margin-bottom: 16px;">Narxni belgilang</h3>
                 <div class="input-group">
@@ -944,19 +952,18 @@
         </div>
 
         <!-- =====================================================================
-             PAGE: MY ADS (MENING E'LONLARIM)
+             PAGE: MY ADS
              ===================================================================== -->
         <div class="page" id="p-myads">
             <h2 style="font-family: 'Space Grotesk'; font-size: 24px; font-weight: 800; margin-bottom: 20px;">Mening e'lonlarim</h2>
             <div id="myads-list" style="display: flex; flex-direction: column; gap: 12px;">
-                <!-- Skeleton -->
                 <div class="skeleton" style="height: 80px;"></div>
                 <div class="skeleton" style="height: 80px;"></div>
             </div>
         </div>
 
         <!-- =====================================================================
-             PAGE: PROFILE (PROFIL)
+             PAGE: PROFILE
              ===================================================================== -->
         <div class="page" id="p-profile">
             <div class="premium-card">
@@ -994,7 +1001,7 @@
         </div>
 
         <!-- =====================================================================
-             PAGE: ADMIN PANEL (PREMIUM)
+             PAGE: ADMIN PANEL (Kengaytirilgan)
              ===================================================================== -->
         <div class="page" id="p-admin">
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
@@ -1024,10 +1031,12 @@
 
             <!-- Admin Tabs -->
             <div class="tabs" style="margin-bottom: 16px; overflow-x: scroll;">
-                <button class="tab active" onclick="Admin.setTab('stats', this)"><i data-feather="bar-chart"></i> Statistika</button>
+                <button class="tab active" onclick="Admin.setTab('stats', this)"><i data-feather="bar-chart"></i> Stats</button>
                 <button class="tab" onclick="Admin.setTab('ads', this)"><i data-feather="layers"></i> E'lonlar</button>
-                <button class="tab" onclick="Admin.setTab('users', this)"><i data-feather="users"></i> Foydalanuvchilar</button>
+                <button class="tab" onclick="Admin.setTab('users', this)"><i data-feather="users"></i> Users</button>
                 <button class="tab" onclick="Admin.setTab('cards', this)"><i data-feather="credit-card"></i> Kartalar</button>
+                <button class="tab" onclick="Admin.setTab('userbot', this)"><i data-feather="smartphone"></i> Userbot</button>
+                <button class="tab" onclick="Admin.setTab('settings', this)"><i data-feather="settings"></i> Sozlama</button>
             </div>
 
             <!-- Admin: Stats -->
@@ -1081,6 +1090,44 @@
                 </div>
                 <div id="admin-cards-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
             </div>
+
+            <!-- Admin: Userbot -->
+            <div id="admin-tab-userbot" class="hidden">
+                <div class="card" style="padding: 16px; margin-bottom: 16px;">
+                    <h3 style="font-weight: 800; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-feather="smartphone" style="color: var(--blue); width: 20px;"></i> Userbot qo'shish</h3>
+                    <p style="font-size: 12px; color: var(--text-3); margin-bottom: 16px;">CardXabarBot dan to'lovlarni avtomatik kuzatish uchun shaxsiy akkauntingizni ulang.</p>
+                    <div class="input-group">
+                        <label class="label">Telefon raqam</label>
+                        <input type="text" class="input" id="ub-phone" placeholder="+998901234567">
+                    </div>
+                    <button class="btn btn-primary" id="btn-ub-send" onclick="AdminUserbot.sendCode()">Kod yuborish</button>
+                    
+                    <div id="ub-verify-box" class="hidden" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+                        <div class="input-group">
+                            <label class="label">Tasdiqlash kodi</label>
+                            <input type="text" class="input" id="ub-code" placeholder="12345">
+                        </div>
+                        <div class="input-group">
+                            <label class="label">Parol (Agar 2FA yoqilgan bo'lsa)</label>
+                            <input type="password" class="input" id="ub-password" placeholder="********">
+                        </div>
+                        <button class="btn btn-success" onclick="AdminUserbot.verifyCode()">Tasdiqlash</button>
+                    </div>
+                </div>
+                <div id="admin-userbot-sessions"></div>
+            </div>
+
+            <!-- Admin: Settings -->
+            <div id="admin-tab-settings" class="hidden">
+                <div class="card" style="padding: 16px;">
+                    <h3 style="font-weight: 800; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;"><i data-feather="settings" style="color: var(--purple); width: 20px;"></i> Tizim sozlamalari</h3>
+                    <div class="input-group">
+                        <label class="label">Web App reklama muddati (kunlarda)</label>
+                        <input type="number" class="input" id="set-ad-days" placeholder="10">
+                    </div>
+                    <button class="btn btn-primary" onclick="AdminSettings.save()">Saqlash</button>
+                </div>
+            </div>
         </div>
 
         <!-- =====================================================================
@@ -1116,9 +1163,29 @@
                 <div class="modal-title">E'lon tafsilotlari</div>
                 <button onclick="AdDetails.close()"><i data-feather="x"></i></button>
             </div>
-            <div id="ad-details-content">
-                <!-- Dynamic content -->
+            <div id="ad-details-content"></div>
+        </div>
+    </div>
+
+    <!-- Admin: User Detail Modal -->
+    <div class="overlay" id="modal-admin-user" onclick="if(event.target===this) AdminUser.close()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Foydalanuvchi ma'lumotlari</div>
+                <button onclick="AdminUser.close()"><i data-feather="x"></i></button>
             </div>
+            <div id="admin-user-content"></div>
+        </div>
+    </div>
+
+    <!-- Admin: Edit Ad Modal -->
+    <div class="overlay" id="modal-admin-edit-ad" onclick="if(event.target===this) AdminAdEdit.close()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">Reklamani tahrirlash</div>
+                <button onclick="AdminAdEdit.close()"><i data-feather="x"></i></button>
+            </div>
+            <div id="admin-edit-ad-content"></div>
         </div>
     </div>
 
@@ -1133,19 +1200,19 @@
         // 1. GLOBAL O'ZGARUVCHILAR VA KONFIGURATSIYA
         // ==========================================================================
         const API_BASE = 'https://uzbekcats-production.up.railway.app/api';
+        const API_UPLOADS = 'https://uzbekcats-production.up.railway.app';
         const tg = window.Telegram?.WebApp;
         const TOKEN = tg?.initData || '';
 
-        // Tarif narxlari (config.py dan olingan)
         const TARIFFS = {
             'web_only': { 
                 name: 'Web App faqat', 
-                desc: 'Botning asosiy sahifasida chiqadi (7 kun)',
+                desc: 'Botning asosiy sahifasida chiqadi',
                 prices: {1:10000, 2:18000, 3:25000, 4:31000, 5:38000} 
             },
             'channel_only': { 
                 name: 'Kanal faqat', 
-                desc: 'Faqat kanalga post qilinadi (Umrbod)',
+                desc: 'Faqat kanalga post qilinadi',
                 prices: {1:25000, 2:45000, 3:65000, 4:85000, 5:105000} 
             },
             'web_and_channel': { 
@@ -1155,7 +1222,6 @@
             }
         };
 
-        // Zotlar, Yoshlar, Viloyatlar (Tugmalar uchun)
         const BREEDS_LIST = [
             "Scottish fold", "Scottish straight", "British blue", "British chinchilla",
             "Bengal cat", "Turkish angora", "Scottish chinchila", "Gibrid", 
@@ -1197,7 +1263,6 @@
                 username: '', 
                 price: '', 
                 currency: "so'm",
-                // Vaqtinchalik ma'lumotlar
                 tempBreed: '',
                 tempAge: '',
                 tempGender: '',
@@ -1225,7 +1290,7 @@
                 return d.toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
             },
             escapeHTML(str) {
-                return str ? str.replace(/[&<>'"]/g, 
+                return str ? String(str).replace(/[&<>'"]/g, 
                     tag => ({
                         '&': '&amp;',
                         '<': '&lt;',
@@ -1234,6 +1299,12 @@
                         '"': '&quot;'
                     }[tag] || tag)
                 ) : '';
+            },
+            getImageUrl(photos) {
+                if (!photos || photos.length === 0) return 'https://via.placeholder.com/300?text=Rasm+yoq';
+                const p = photos[0];
+                if (p.startsWith('http')) return p;
+                return API_UPLOADS + p;
             }
         };
 
@@ -1249,7 +1320,6 @@
                     tg.setBackgroundColor('#0A0D14');
                 }
                 
-                // Theme
                 const savedTheme = localStorage.getItem('theme');
                 if (savedTheme === 'light') {
                     document.documentElement.setAttribute('data-theme', 'light');
@@ -1259,9 +1329,7 @@
                     $('btn-theme').innerHTML = '<i data-feather="moon"></i>';
                 }
 
-                // Tugmalarni yaratish
                 this.renderStaticOptions();
-
                 feather.replace();
                 this.loadData();
             },
@@ -1316,7 +1384,6 @@
 
                     $('h-name').innerText = STATE.user.full_name || "Foydalanuvchi";
                     
-                    // Telegram rasmni tekshirish
                     const tgPhoto = tg?.initDataUnsafe?.user?.photo_url;
                     const avatarHtml = tgPhoto 
                         ? `<img src="${tgPhoto}">` 
@@ -1324,7 +1391,6 @@
                     $('h-avatar').innerHTML = avatarHtml;
 
                     $('ui-balance').innerText = num(STATE.user.balance);
-
                     $('prof-name').innerText = STATE.user.full_name || "Foydalanuvchi";
                     $('prof-id').innerText = '#' + (STATE.user.user_number || '0000');
                     $('prof-balance').innerText = num(STATE.user.balance);
@@ -1342,28 +1408,22 @@
             },
 
             renderStaticOptions() {
-                // Zotlar
-                const breedGrid = $('c-breed-grid');
-                breedGrid.innerHTML = BREEDS_LIST.map(b => 
+                $('c-breed-grid').innerHTML = BREEDS_LIST.map(b => 
                     `<button class="option-btn" onclick="CreateAd.selectOption('breed', '${b}', this)">${b}</button>`
                 ).join('');
 
-                // Yoshlar
-                const ageGrid = $('c-age-grid');
-                ageGrid.innerHTML = AGES_LIST.map(a => 
+                $('c-age-grid').innerHTML = AGES_LIST.map(a => 
                     `<button class="option-btn" onclick="CreateAd.selectOption('age', '${a}', this)">${a}</button>`
                 ).join('');
 
-                // Viloyatlar
-                const regionGrid = $('c-region-grid');
-                regionGrid.innerHTML = REGIONS_LIST.map(r => 
+                $('c-region-grid').innerHTML = REGIONS_LIST.map(r => 
                     `<button class="option-btn" onclick="CreateAd.selectOption('region', '${r}', this)">${r}</button>`
                 ).join('');
             }
         };
 
         // ==========================================================================
-        // 4. DASHBOARD (ASOSIY SAHIFA)
+        // 4. DASHBOARD
         // ==========================================================================
         const Dashboard = {
             async load() {
@@ -1378,7 +1438,7 @@
             },
             
             setFilter(type, btn) {
-                document.querySelectorAll('.tabs .tab').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('#p-dashboard .tabs .tab').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 STATE.currentFilter = type;
                 this.render(type);
@@ -1410,9 +1470,7 @@
                 grid.innerHTML = data.map(ad => {
                     const firstCat = ad.cats_data && ad.cats_data.length > 0 ? ad.cats_data[0] : {};
                     const title = firstCat.breed || ad.breed || 'Mushuk';
-                    const imgUrl = ad.photos && ad.photos.length > 0 
-                        ? (ad.photos[0].startsWith('http') ? ad.photos[0] : API_BASE.replace('/api','') + ad.photos[0])
-                        : 'https://via.placeholder.com/300?text=Rasm+yoq';
+                    const imgUrl = Utils.getImageUrl(ad.photos);
 
                     return `
                         <div class="card" onclick="AdDetails.open(${ad.id})">
@@ -1430,13 +1488,12 @@
         };
 
         // ==========================================================================
-        // 5. AD DETAILS (E'LON TAFSILOTLARI MODAL)
+        // 5. AD DETAILS MODAL
         // ==========================================================================
         const AdDetails = {
             open(id) {
                 const ad = STATE.ads.find(a => a.id === id);
                 if (!ad) return;
-
                 Utils.haptic('medium');
                 
                 const catsHtml = (ad.cats_data || []).map((cat, i) => `
@@ -1449,25 +1506,32 @@
                     </div>
                 `).join('');
 
-                const imgUrl = ad.photos && ad.photos.length > 0 
-                        ? (ad.photos[0].startsWith('http') ? ad.photos[0] : API_BASE.replace('/api','') + ad.photos[0])
-                        : 'https://via.placeholder.com/300?text=Rasm+yoq';
+                const imgUrl = Utils.getImageUrl(ad.photos);
+                const hasUsername = ad.username && ad.username !== "Noma'lum" && ad.username !== "—";
 
                 $('ad-details-content').innerHTML = `
-                    <img src="${imgUrl}" style="width: 100%; height: 250px; object-fit: cover; border-radius: 16px; margin-bottom: 16px;">
+                    <div class="ad-detail-img-container">
+                        <img src="${imgUrl}" onerror="this.src='https://via.placeholder.com/300?text=Xato'">
+                    </div>
                     
                     <div style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">${num(ad.price)} ${ad.currency || "so'm"}</div>
                     <div style="display: flex; gap: 8px; margin-bottom: 16px;">
                         <span style="background: rgba(59,130,246,0.1); color: var(--blue); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">${Utils.escapeHTML(ad.address || '—')}</span>
-                        <span style="background: rgba(16,185,129,0.1); color: var(--green); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">Sotiladi</span>
+                        <span style="background: rgba(16,185,129,0.1); color: var(--green); padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">${ad.ad_type === 'hadiya' ? 'Hadiya' : 'Sotiladi'}</span>
                     </div>
 
                     <div style="font-size: 14px; font-weight: 700; margin-bottom: 8px;">Mushuklar ma'lumotlari</div>
                     ${catsHtml || '<div style="color: var(--text-3);">Ma\'lumot yo\'q</div>'}
                     
-                    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border);">
-                        <a href="tel:${ad.phone}" class="btn btn-primary" style="margin-bottom: 8px;">Qo'ng'iroq qilish (${Utils.escapeHTML(ad.phone)})</a>
-                        <button class="btn btn-outline" onclick="UI.toast('Admin bilan bog\\'lanish: @zayd_catlover')">Xabar yozish</button>
+                    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px;">
+                        <a href="tel:${ad.phone}" class="btn btn-primary">
+                            <i data-feather="phone-call" style="width: 18px;"></i> Qo'ng'iroq qilish (${Utils.escapeHTML(ad.phone)})
+                        </a>
+                        ${hasUsername ? `
+                            <a href="https://t.me/${ad.username.replace('@', '')}" target="_blank" class="btn btn-outline">
+                                <i data-feather="send" style="width: 18px;"></i> Xabar yozish (${Utils.escapeHTML(ad.username)})
+                            </a>
+                        ` : ''}
                     </div>
                 `;
                 
@@ -1481,7 +1545,7 @@
         };
 
         // ==========================================================================
-        // 6. RATING (KONKURS REYTINGI)
+        // 6. RATING
         // ==========================================================================
         const Rating = {
             async load() {
@@ -1537,7 +1601,7 @@
         };
 
         // ==========================================================================
-        // 7. TOPUP (HISOB TO'LDIRISH)
+        // 7. TOPUP
         // ==========================================================================
         const Topup = {
             timer: null,
@@ -1632,7 +1696,11 @@
                     if(res.ok) {
                         UI.toast("Chek yuklandi! Admin tasdiqlaydi.");
                         clearInterval(this.timer);
-                        setTimeout(() => UI.showPage('p-dashboard'), 1500);
+                        setTimeout(() => {
+                            UI.showPage('p-dashboard');
+                            $('topup-initial').classList.remove('hidden');
+                            $('topup-info').classList.add('hidden');
+                        }, 1500);
                     } else {
                         throw new Error("Xatolik");
                     }
@@ -1644,26 +1712,14 @@
         };
 
         // ==========================================================================
-        // 8. CREATE AD (REKLAMA BERISH)
+        // 8. CREATE AD
         // ==========================================================================
         const CreateAd = {
             reset() {
                 STATE.adState = { 
-                    step: 1, 
-                    cat_count: 1, 
-                    tariff: '', 
-                    photos: [], 
-                    cats: [], 
-                    currentCatIndex: 0, 
-                    address: '', 
-                    phone: '', 
-                    username: '', 
-                    price: '', 
-                    currency: "so'm",
-                    tempBreed: '',
-                    tempAge: '',
-                    tempGender: '',
-                    tempHealth: ''
+                    step: 1, cat_count: 1, tariff: '', photos: [], cats: [], currentCatIndex: 0, 
+                    address: '', phone: '', username: '', price: '', currency: "so'm",
+                    tempBreed: '', tempAge: '', tempGender: '', tempHealth: ''
                 };
                 $('uploaded-photos').innerHTML = '';
                 this.nextStep(1);
@@ -1679,12 +1735,11 @@
                 if(step === 2) this.renderTariffs();
                 if(step === 4) {
                     this.renderCatForm();
-                    // Reset temp options
                     STATE.adState.tempBreed = '';
                     STATE.adState.tempAge = '';
                     STATE.adState.tempGender = '';
                     STATE.adState.tempHealth = '';
-                    document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+                    document.querySelectorAll('#p-create .option-btn').forEach(b => b.classList.remove('selected'));
                 }
             },
             setCount(count) {
@@ -1706,9 +1761,8 @@
                             </div>
                             <div style="font-size: 12px; color: var(--text-3); margin-top: 4px;">${t.desc}</div>
                             <ul class="tariff-features">
-                                ${key !== 'channel_only' ? '<li><i data-feather="check"></i> Botning asosiy sahifasida chiqadi (7 kun)</li>' : ''}
-                                ${key !== 'web_only' ? '<li><i data-feather="check"></i> Kanallarga post qilinadi (Umrbod)</li>' : ''}
-                                <li><i data-feather="check"></i> 24/7 Qo\'llab-quvvatlash</li>
+                                ${key !== 'channel_only' ? '<li><i data-feather="check"></i> Web App da chiqadi</li>' : ''}
+                                ${key !== 'web_only' ? '<li><i data-feather="check"></i> Kanallarga post qilinadi</li>' : ''}
                             </ul>
                         </div>
                     `;
@@ -1720,18 +1774,7 @@
                 document.querySelectorAll('.tariff-card').forEach(c => c.classList.remove('selected'));
                 el.classList.add('selected');
                 Utils.haptic('light');
-                
-                // Tarifni tanlashi bilan keyingi qadamga avtomatik o'tish (Sizning talabingizga ko'ra)
                 setTimeout(() => this.nextStep(3), 200);
-            },
-            checkBalance() {
-                if(!STATE.adState.tariff) return UI.toast("Tarifni tanlang!", "error");
-                const price = TARIFFS[STATE.adState.tariff].prices[STATE.adState.cat_count];
-                if(STATE.user.balance < price) {
-                    UI.toast("Mablag' yetarli emas!", "error");
-                    return UI.showPage('p-topup');
-                }
-                this.nextStep(3);
             },
             handleFiles(input) {
                 const files = Array.from(input.files);
@@ -1748,7 +1791,7 @@
                     reader.readAsDataURL(file);
                 });
                 
-                input.value = ''; // Reset input
+                input.value = '';
             },
             renderPhotos() {
                 const grid = $('uploaded-photos');
@@ -1759,12 +1802,7 @@
                     </div>
                 `).join('');
 
-                // Rasm soni 3 taga yetsa yuklash qutisini yashirish
-                if(STATE.adState.photos.length >= 3) {
-                    $('upload-label').style.display = 'none';
-                } else {
-                    $('upload-label').style.display = 'flex';
-                }
+                $('upload-label').style.display = STATE.adState.photos.length >= 3 ? 'none' : 'flex';
                 feather.replace();
             },
             removePhoto(index) {
@@ -1779,15 +1817,13 @@
                 if(field === 'health') STATE.adState.tempHealth = value;
                 if(field === 'region') STATE.adState.address = value;
 
-                // Bir guruhdagi boshqalarni o'chirish
                 const parent = btn.parentElement;
                 parent.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
                 btn.classList.add('selected');
                 Utils.haptic('light');
             },
             renderCatForm() {
-                const idx = STATE.adState.currentCatIndex;
-                $('cat-detail-title').innerText = `${idx + 1}-mushuk ma'lumotlari`;
+                $('cat-detail-title').innerText = `${STATE.adState.currentCatIndex + 1}-mushuk ma'lumotlari`;
             },
             saveCat() {
                 if(!STATE.adState.tempBreed) return UI.toast("Zotni tanlang!", "error");
@@ -1795,23 +1831,21 @@
                 if(!STATE.adState.tempGender) return UI.toast("Jinsni tanlang!", "error");
                 if(!STATE.adState.tempHealth) return UI.toast("Sog'lig'ini tanlang!", "error");
 
-                const cat = {
+                STATE.adState.cats.push({
                     breed: STATE.adState.tempBreed,
                     age: STATE.adState.tempAge,
                     gender: STATE.adState.tempGender,
                     health: STATE.adState.tempHealth
-                };
-                STATE.adState.cats.push(cat);
+                });
                 STATE.adState.currentCatIndex++;
 
                 if(STATE.adState.currentCatIndex < STATE.adState.cat_count) {
                     this.renderCatForm();
-                    // Reset selections
                     STATE.adState.tempBreed = '';
                     STATE.adState.tempAge = '';
                     STATE.adState.tempGender = '';
                     STATE.adState.tempHealth = '';
-                    document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+                    document.querySelectorAll('#p-create .option-btn').forEach(b => b.classList.remove('selected'));
                     Utils.haptic('light');
                 } else {
                     this.nextStep(5);
@@ -1829,13 +1863,7 @@
                 STATE.adState.currency = curr;
                 document.querySelectorAll('#w-step-6 .btn-outline').forEach(b => b.style.borderColor = 'var(--border)');
                 btn.style.borderColor = 'var(--blue)';
-                
-                const priceInput = $('ad-price');
-                if(curr === 'so\'m') {
-                    priceInput.placeholder = "1500000";
-                } else {
-                    priceInput.placeholder = "150";
-                }
+                $('ad-price').placeholder = curr === "so'm" ? "1500000" : "150";
                 Utils.haptic('light');
             },
             preview() {
@@ -1851,11 +1879,10 @@
                 STATE.adState.username = username;
                 STATE.adState.price = price;
 
-                const tariffName = TARIFFS[STATE.adState.tariff].name;
                 const cost = TARIFFS[STATE.adState.tariff].prices[STATE.adState.cat_count];
 
                 $('preview-data').innerHTML = `
-                    <div style="font-size: 13px; color: var(--text-3); margin-bottom: 8px;">Tarif: <b style="color:var(--blue)">${tariffName}</b></div>
+                    <div style="font-size: 13px; color: var(--text-3); margin-bottom: 8px;">Tarif: <b style="color:var(--blue)">${TARIFFS[STATE.adState.tariff].name}</b></div>
                     <div style="font-size: 15px; font-weight: 700; margin-bottom: 8px;">${STATE.adState.cat_count} ta mushuk</div>
                     <div style="font-size: 13px; margin-bottom: 4px;">📍 ${Utils.escapeHTML(STATE.adState.address)}</div>
                     <div style="font-size: 13px; margin-bottom: 4px;">📞 ${Utils.escapeHTML(phone)} ${username ? '('+Utils.escapeHTML(username)+')' : ''}</div>
@@ -1889,7 +1916,7 @@
                 formData.append('phone', STATE.adState.phone);
                 formData.append('price', STATE.adState.price);
                 formData.append('currency', STATE.adState.currency);
-                
+                formData.append('media_type', 'photo');
                 STATE.adState.photos.forEach(p => formData.append('photos', p.file));
 
                 try {
@@ -1907,7 +1934,7 @@
                     UI.toast("E'lon muvaffaqiyatli yaratildi!");
                     Utils.haptic('success');
                     UI.showPage('p-dashboard');
-                    UI.loadData(); // Balansni yangilash
+                    UI.loadData();
                 } catch(e) {
                     UI.toast(e.message, "error");
                 } finally {
@@ -1918,7 +1945,7 @@
         };
 
         // ==========================================================================
-        // 9. MY ADS (MENING E'LONLARIM)
+        // 9. MY ADS
         // ==========================================================================
         const MyAds = {
             async load() {
@@ -1943,10 +1970,7 @@
                     list.innerHTML = ads.map(ad => {
                         const firstCat = ad.cats_data && ad.cats_data.length > 0 ? ad.cats_data[0] : {};
                         const title = firstCat.breed || ad.breed || 'Mushuk';
-                        const imgUrl = ad.photos && ad.photos.length > 0 
-                            ? (ad.photos[0].startsWith('http') ? ad.photos[0] : API_BASE.replace('/api','') + ad.photos[0])
-                            : 'https://via.placeholder.com/60';
-                            
+                        const imgUrl = Utils.getImageUrl(ad.photos);
                         const statusColor = ad.status === 'approved' ? 'var(--green)' : (ad.status === 'rejected' ? 'var(--red)' : 'var(--amber)');
 
                         return `
@@ -1959,7 +1983,7 @@
                                     </div>
                                 </div>
                                 ${ad.status === 'approved' ? `
-                                    <button class="btn btn-outline" style="width: auto; padding: 8px 12px; font-size: 12px;" onclick="MyAds.markDone(${ad.id})">Sotildi</button>
+                                    <button class="btn btn-outline btn-sm" onclick="MyAds.markDone(${ad.id})">Sotildi</button>
                                 ` : ''}
                             </div>
                         `;
@@ -2014,6 +2038,8 @@
                 if(tab === 'ads') this.loadAds();
                 if(tab === 'users') this.loadUsers();
                 if(tab === 'cards') this.loadCards();
+                if(tab === 'userbot') AdminUserbot.load();
+                if(tab === 'settings') AdminSettings.load();
             },
             async loadAds() {
                 const list = $('admin-ads-list');
@@ -2032,17 +2058,19 @@
                         const title = firstCat.breed || ad.breed || 'Noma\'lum';
                         
                         return `
-                            <div class="admin-list-item">
-                                <div style="flex: 1;">
+                            <div class="admin-list-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                                <div style="display: flex; justify-content: space-between;">
                                     <div style="font-weight: 800;">${Utils.escapeHTML(title)} <span style="font-size:10px; color:var(--text-3);">#${ad.id}</span></div>
-                                    <div style="font-size: 12px; color: var(--text-3); margin-top: 2px;">Holat: ${ad.status}</div>
+                                    <div style="font-size: 12px; color: var(--text-3);">${ad.status}</div>
                                 </div>
-                                ${ad.status === 'pending' ? `
-                                    <div style="display: flex; gap: 4px;">
-                                        <button class="btn btn-success" style="width: auto; padding: 6px 10px; font-size: 12px;" onclick="Admin.approveAd(${ad.id})">Tasdiqlash</button>
-                                        <button class="btn btn-danger" style="width: auto; padding: 6px 10px; font-size: 12px;" onclick="Admin.rejectAd(${ad.id})">Rad etish</button>
-                                    </div>
-                                ` : ''}
+                                <div style="display: flex; gap: 4px; justify-content: flex-end; margin-top: 8px;">
+                                    ${ad.status === 'pending' ? `
+                                        <button class="btn btn-success btn-sm" onclick="Admin.approveAd(${ad.id})">Tasdiqlash</button>
+                                        <button class="btn btn-danger btn-sm" onclick="Admin.rejectAd(${ad.id})">Rad etish</button>
+                                    ` : ''}
+                                    <button class="btn btn-outline btn-sm" onclick="AdminAdEdit.open(${ad.id})" style="color: var(--blue);">Tahrirlash</button>
+                                    <button class="btn btn-outline btn-sm" onclick="Admin.deleteAd(${ad.id})" style="color: var(--red);">O'chirish</button>
+                                </div>
                             </div>
                         `;
                     }).join('');
@@ -2056,7 +2084,7 @@
                     const users = await res.json();
                     
                     list.innerHTML = users.slice(0, 50).map(u => `
-                        <div class="admin-list-item">
+                        <div class="admin-list-item" onclick="AdminUser.open(${u.id})">
                             <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800;">
                                 ${(u.full_name || 'U')[0]}
                             </div>
@@ -2119,7 +2147,7 @@
                         UI.toast("E'lon tasdiqlandi!");
                         Utils.haptic('success');
                         this.loadAds();
-                        this.load(); // Update stats
+                        this.load();
                     }
                 } catch(e) {}
             },
@@ -2136,26 +2164,331 @@
                         UI.toast("E'lon rad etildi!");
                         Utils.haptic('error');
                         this.loadAds();
-                        this.load(); // Update stats
+                        this.load();
+                    }
+                } catch(e) {}
+            },
+            async deleteAd(id) {
+                if(!confirm("Reklamani butunlay o'chirib tashlamoqchimisiz?")) return;
+                try {
+                    const res = await fetch(`${API_BASE}/admin/ads/${id}`, {
+                        method: 'DELETE',
+                        headers: { 'X-Telegram-Init-Data': TOKEN }
+                    });
+                    if(res.ok) {
+                        UI.toast("E'lon o'chirildi!");
+                        this.loadAds();
+                        this.load();
                     }
                 } catch(e) {}
             }
         };
 
         // ==========================================================================
-        // 11. EVENT LISTENERS VA ISHGA TUSHIRISH
+        // 11. ADMIN: USER DETAIL
+        // ==========================================================================
+        const AdminUser = {
+            currentId: null,
+            async open(id) {
+                this.currentId = id;
+                const content = $('admin-user-content');
+                content.innerHTML = '<div class="spinner"></div>';
+                $('modal-admin-user').classList.add('active');
+                Utils.haptic('medium');
+
+                try {
+                    const res = await fetch(`${API_BASE}/admin/user/${id}`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
+                    const data = await res.json();
+                    const u = data.user;
+
+                    content.innerHTML = `
+                        <div style="text-align: center; margin-bottom: 20px;">
+                            <div style="width: 70px; height: 70px; border-radius: 50%; background: var(--blue); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 24px; margin: 0 auto 12px;">
+                                ${(u.full_name || 'U')[0]}
+                            </div>
+                            <div style="font-weight: 800; font-size: 18px;">${Utils.escapeHTML(u.full_name)}</div>
+                            <div style="font-size: 13px; color: var(--text-3);">#${u.user_number} • ID: ${u.id}</div>
+                        </div>
+                        
+                        <div class="menu-list" style="margin-bottom: 16px;">
+                            <div class="menu-item">
+                                <div class="menu-icon"><i data-feather="phone"></i></div>
+                                <div class="menu-text">Telefon</div>
+                                <div style="font-weight: 700;">${Utils.escapeHTML(u.phone)}</div>
+                            </div>
+                            <div class="menu-item">
+                                <div class="menu-icon"><i data-feather="dollar-sign"></i></div>
+                                <div class="menu-text">Balans</div>
+                                <div style="font-weight: 700; color: var(--blue);">${num(u.balance)} so'm</div>
+                            </div>
+                            <div class="menu-item">
+                                <div class="menu-icon"><i data-feather="credit-card"></i></div>
+                                <div class="menu-text">To'lagan</div>
+                                <div style="font-weight: 700; color: var(--green);">${num(data.paid_total)} so'm</div>
+                            </div>
+                            <div class="menu-item">
+                                <div class="menu-icon"><i data-feather="users"></i></div>
+                                <div class="menu-text">Takliflari</div>
+                                <div style="font-weight: 700;">${data.referrals_count} ta</div>
+                            </div>
+                        </div>
+
+                        <div class="grid-2" style="margin-bottom: 16px;">
+                            <button class="btn ${u.is_banned ? 'btn-success' : 'btn-danger'}" onclick="AdminUser.toggleBlock(${u.is_banned})">
+                                <i data-feather="${u.is_banned ? 'unlock' : 'lock'}"></i> ${u.is_banned ? 'Blokdan chiqarish' : 'Bloklash'}
+                            </button>
+                            <button class="btn btn-primary" onclick="AdminUser.showBalanceInput()">
+                                <i data-feather="plus-circle"></i> Balans
+                            </button>
+                        </div>
+
+                        <div id="admin-user-balance-box" class="hidden card" style="padding: 16px;">
+                            <div class="input-group">
+                                <label class="label">Summa (so'm)</label>
+                                <input type="number" class="input" id="adm-ub-amount" placeholder="50000">
+                            </div>
+                            <div class="grid-2">
+                                <button class="btn btn-success" onclick="AdminUser.changeBalance(1)">Qo'shish</button>
+                                <button class="btn btn-danger" onclick="AdminUser.changeBalance(-1)">Ayirish</button>
+                            </div>
+                        </div>
+                    `;
+                    feather.replace();
+                } catch(e) {
+                    content.innerHTML = '<div class="text-center text-red">Xatolik yuz berdi</div>';
+                }
+            },
+            close() {
+                $('modal-admin-user').classList.remove('active');
+                this.currentId = null;
+            },
+            showBalanceInput() {
+                $('admin-user-balance-box').classList.toggle('hidden');
+            },
+            async toggleBlock(isBanned) {
+                const endpoint = isBanned ? 'unblock' : 'block';
+                try {
+                    await fetch(`${API_BASE}/admin/user/${endpoint}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
+                        body: JSON.stringify({ telegram_id: this.currentId })
+                    });
+                    UI.toast(isBanned ? "Blokdan chiqarildi" : "Bloklandi!");
+                    Utils.haptic('success');
+                    this.open(this.currentId);
+                    Admin.loadUsers();
+                } catch(e) {}
+            },
+            async changeBalance(sign) {
+                const amt = parseInt($('adm-ub-amount').value);
+                if(!amt || amt <= 0) return UI.toast("To'g'ri summa kiriting!", "error");
+                try {
+                    await fetch(`${API_BASE}/admin/user/balance`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
+                        body: JSON.stringify({ telegram_id: this.currentId, amount: amt * sign })
+                    });
+                    UI.toast("Balans o'zgartirildi!");
+                    Utils.haptic('success');
+                    this.open(this.currentId);
+                    Admin.loadUsers();
+                } catch(e) {}
+            }
+        };
+
+        // ==========================================================================
+        // 12. ADMIN: EDIT AD
+        // ==========================================================================
+        const AdminAdEdit = {
+            currentId: null,
+            async open(id) {
+                this.currentId = id;
+                const content = $('admin-edit-ad-content');
+                content.innerHTML = '<div class="spinner"></div>';
+                $('modal-admin-edit-ad').classList.add('active');
+
+                try {
+                    const res = await fetch(`${API_BASE}/admin/ads`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
+                    const ads = await res.json();
+                    const ad = ads.find(a => a.id === id);
+
+                    content.innerHTML = `
+                        <div class="input-group">
+                            <label class="label">Manzil</label>
+                            <input type="text" class="input" id="edit-ad-address" value="${Utils.escapeHTML(ad.address || '')}">
+                        </div>
+                        <div class="input-group">
+                            <label class="label">Telefon</label>
+                            <input type="text" class="input" id="edit-ad-phone" value="${Utils.escapeHTML(ad.phone || '')}">
+                        </div>
+                        <div class="input-group">
+                            <label class="label">Narx</label>
+                            <input type="text" class="input" id="edit-ad-price" value="${Utils.escapeHTML(ad.price || '')}">
+                        </div>
+                        <div class="input-group">
+                            <label class="label">Valyuta</label>
+                            <input type="text" class="input" id="edit-ad-currency" value="${Utils.escapeHTML(ad.currency || '')}">
+                        </div>
+                        <button class="btn btn-primary" onclick="AdminAdEdit.save()">Saqlash</button>
+                    `;
+                } catch(e) {
+                    content.innerHTML = '<div class="text-center text-red">Xatolik</div>';
+                }
+            },
+            close() {
+                $('modal-admin-edit-ad').classList.remove('active');
+            },
+            async save() {
+                const data = {
+                    address: $('edit-ad-address').value,
+                    phone: $('edit-ad-phone').value,
+                    price: $('edit-ad-price').value,
+                    currency: $('edit-ad-currency').value
+                };
+                try {
+                    const res = await fetch(`${API_BASE}/admin/ads/${this.currentId}/edit`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
+                        body: JSON.stringify(data)
+                    });
+                    if(res.ok) {
+                        UI.toast("Reklama tahrirlandi!");
+                        this.close();
+                        Admin.loadAds();
+                    }
+                } catch(e) {}
+            }
+        };
+
+        // ==========================================================================
+        // 13. ADMIN: USERBOT
+        // ==========================================================================
+        const AdminUserbot = {
+            async load() {
+                const list = $('admin-userbot-sessions');
+                list.innerHTML = '<div class="spinner"></div>';
+                try {
+                    const res = await fetch(`${API_BASE}/admin/userbot/sessions`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
+                    const data = await res.json();
+                    
+                    if(data.length === 0) {
+                        list.innerHTML = '<div class="text-center" style="color: var(--text-3);">Faol sessiyalar yo\'q</div>';
+                        return;
+                    }
+                    
+                    list.innerHTML = data.map(s => `
+                        <div class="admin-list-item">
+                            <div style="flex: 1;">
+                                <div style="font-weight: 800;">${s.phone}</div>
+                                <div style="font-size: 12px; color: var(--text-3);">${Utils.formatDate(s.added_at)}</div>
+                            </div>
+                            ${s.is_active ? '<span style="color: var(--green); font-size: 12px; font-weight: 700;">Faol</span>' : '<span style="color: var(--red); font-size: 12px; font-weight: 700;">O\'chirilgan</span>'}
+                        </div>
+                    `).join('');
+                } catch(e) {}
+            },
+            async sendCode() {
+                const phone = $('ub-phone').value;
+                if(!phone) return UI.toast("Telefon raqamni kiriting!", "error");
+
+                const btn = $('btn-ub-send');
+                btn.innerHTML = '<div class="spinner" style="width:20px; height:20px; border-width:2px; margin:0;"></div>';
+                btn.disabled = true;
+
+                try {
+                    const res = await fetch(`${API_BASE}/admin/userbot/send_code`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
+                        body: JSON.stringify({ phone })
+                    });
+                    if(res.ok) {
+                        UI.toast("Kod yuborildi!");
+                        $('ub-verify-box').classList.remove('hidden');
+                    } else {
+                        const err = await res.json();
+                        throw new Error(err.detail);
+                    }
+                } catch(e) {
+                    UI.toast(e.message, "error");
+                } finally {
+                    btn.innerText = "Kod yuborish";
+                    btn.disabled = false;
+                }
+            },
+            async verifyCode() {
+                const phone = $('ub-phone').value;
+                const code = $('ub-code').value;
+                const password = $('ub-password').value;
+                if(!code) return UI.toast("Kodni kiriting!", "error");
+
+                try {
+                    const res = await fetch(`${API_BASE}/admin/userbot/verify_code`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
+                        body: JSON.stringify({ phone, code, password: password || null })
+                    });
+                    if(res.ok) {
+                        UI.toast("Userbot ulandi!");
+                        $('ub-verify-box').classList.add('hidden');
+                        $('ub-phone').value = '';
+                        $('ub-code').value = '';
+                        $('ub-password').value = '';
+                        this.load();
+                    } else {
+                        const err = await res.json();
+                        throw new Error(err.detail);
+                    }
+                } catch(e) {
+                    UI.toast(e.message, "error");
+                }
+            }
+        };
+
+        // ==========================================================================
+        // 14. ADMIN: SETTINGS
+        // ==========================================================================
+        const AdminSettings = {
+            async load() {
+                try {
+                    const res = await fetch(`${API_BASE}/admin/settings`, { headers: { 'X-Telegram-Init-Data': TOKEN } });
+                    const data = await res.json();
+                    $('set-ad-days').value = data.ad_duration_days;
+                } catch(e) {}
+            },
+            async save() {
+                const days = parseInt($('set-ad-days').value);
+                if(!days || days < 1) return UI.toast("To'g'ri kun kiriting!", "error");
+
+                try {
+                    const res = await fetch(`${API_BASE}/admin/settings`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': TOKEN },
+                        body: JSON.stringify({ ad_duration_days: days })
+                    });
+                    if(res.ok) {
+                        UI.toast("Sozlamalar saqlandi!");
+                        Utils.haptic('success');
+                    }
+                } catch(e) {}
+            }
+        };
+
+        // ==========================================================================
+        // 15. ISHGA TUSHIRISH
         // ==========================================================================
         document.addEventListener("DOMContentLoaded", () => {
             UI.init();
             
-            // Nav FAB uchun maxsus click
             document.querySelector('.nav-fab').addEventListener('click', () => {
                 CreateAd.reset();
             });
             
-            // Ad details modalni yopish uchun Escape tugmasi
             document.addEventListener('keydown', (e) => {
-                if(e.key === 'Escape') AdDetails.close();
+                if(e.key === 'Escape') {
+                    AdDetails.close();
+                    AdminUser.close();
+                    AdminAdEdit.close();
+                }
             });
         });
     </script>
