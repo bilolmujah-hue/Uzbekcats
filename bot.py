@@ -1,7 +1,8 @@
 # ==============================================================================
 # LOYIHA: UzbekCats Bot & Web App
 # FAYL: bot.py
-# TAVSIF: To'liq, xatosiz, yangi to'lov tizimi va admin tasdiqlash mantiqi bilan
+# TAVSIF: To'liq xatosiz, video/rasm muammolari, zotlar sahifalash va
+#         FSM state xatolari to'liq bartaraf etilgan versiya.
 # ==============================================================================
 
 import asyncio
@@ -11,12 +12,11 @@ import re
 import traceback
 from datetime import datetime, timedelta
 from html import escape as html_escape
-from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F, Router, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -29,7 +29,7 @@ from aiogram.types import (
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
-from config import BotConfig, DataLists, Prices, Settings, Texts, UserbotConfig, WebAppConfig
+from config import BotConfig, DataLists, Prices, Settings, Texts, UserbotConfig
 from db import db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -88,18 +88,18 @@ async def safe_edit_text(message: Message, text: str, reply_markup=None):
     except TelegramBadRequest:
         try:
             await message.delete()
-        except:
+        except Exception:
             pass
         await message.answer(text, reply_markup=reply_markup)
 
 async def safe_delete(message: Message):
     try:
         await message.delete()
-    except:
+    except Exception:
         pass
 
 # =====================================================================
-# USERBOT
+# USERBOT (To'lovlarni avtomatik tasdiqlash)
 # =====================================================================
 async def start_userbot(session_string: str):
     global userbot_client
@@ -117,7 +117,7 @@ async def start_userbot(session_string: str):
         await userbot_client.connect()
 
         if not await userbot_client.is_user_authorized():
-            logger.error("❌ Userbot sessiyasi eskirgan yoki yaroqsiz! Qaytadan ulang.")
+            logger.error("❌ Userbot sessiyasi eskirgan yoki yaroqsiz!")
             await userbot_client.disconnect()
             userbot_client = None
             return
@@ -272,33 +272,40 @@ def get_preview_kb(balance: int, price: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 def get_viloyat_kb() -> InlineKeyboardMarkup:
-    kb = [[InlineKeyboardButton(text=v, callback_data="viloyat_" + v.lower().replace(" ", "_").replace("'", ""))] for v in DataLists.VILOYATLAR]
+    kb = [[InlineKeyboardButton(text=v, callback_data=f"viloyat_{i}")] for i, v in enumerate(DataLists.VILOYATLAR)]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
+# 🔴 ZOTLAR KLAVIATURASI TO'G'RILANDI (Sahifalash)
 def get_breed_kb(page: int = 0) -> InlineKeyboardMarkup:
     kb, row = [], []
-    for i, breed in enumerate(DataLists.BREEDS[page]):
-        row.append(InlineKeyboardButton(text=breed, callback_data=f"breed_{page}_{i}"))
+    start_idx = page * 10
+    end_idx = start_idx + 10
+    breeds_slice = DataLists.BREEDS[start_idx:end_idx]
+    
+    for i, breed in enumerate(breeds_slice):
+        actual_index = start_idx + i
+        row.append(InlineKeyboardButton(text=breed, callback_data=f"breed_{actual_index}"))
         if len(row) == 2:
             kb.append(row)
             row = []
     if row:
         kb.append(row)
+        
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"breed_page_{page-1}"))
-    if page < len(DataLists.BREEDS) - 1:
+    if end_idx < len(DataLists.BREEDS):
         nav.append(InlineKeyboardButton(text="➡️", callback_data=f"breed_page_{page+1}"))
     if nav:
         kb.append(nav)
     kb.append([InlineKeyboardButton(text="✏️ O'zim yozaman", callback_data="breed_custom")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
+# 🔴 YOSH KLAVIATURASI TO'G'RILANDI (Indeks bo'yicha)
 def get_age_kb() -> InlineKeyboardMarkup:
     kb, row = [], []
-    for age in DataLists.AGES:
-        cb = age.replace(" ", "_").replace(",", "")
-        row.append(InlineKeyboardButton(text=age, callback_data=f"age_{cb}"))
+    for i, age in enumerate(DataLists.AGES):
+        row.append(InlineKeyboardButton(text=age, callback_data=f"age_{i}"))
         if len(row) == 3:
             kb.append(row)
             row = []
@@ -311,7 +318,7 @@ def get_simple_kb(options: list, prefix: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 # =====================================================================
-# KANALGA POST (Rasm va Video xatosi to'liq tuzatildi)
+# KANALGA POST (RASM VA VIDEO XATOSI TO'LIQ TUZATILDI)
 # =====================================================================
 async def post_to_channel(ad_data: dict):
     ad_type = ad_data.get("ad_type")
@@ -357,36 +364,26 @@ async def post_to_channel(ad_data: dict):
     if isinstance(photos, str):
         try: photos = json.loads(photos)
         except: photos = []
-
-    def is_video_file(p: str) -> bool:
-        p_lower = p.lower()
-        return p_lower.endswith((".mp4", ".mov", ".avi", ".mkv")) or "video" in p_lower
+    
+    # 🔴 MEDIA_TYPE ORQALI ANIQLASH (XATO TUZATILDI)
+    media_type = ad_data.get("media_type", "photo")
 
     try:
-        if len(photos) > 1:
-            media_group = []
-            for i, p in enumerate(photos):
-                if is_video_file(p):
-                    media = InputMediaVideo(media=p, caption=caption if i==0 else None, parse_mode=ParseMode.HTML)
-                else:
-                    media = InputMediaPhoto(media=p, caption=caption if i==0 else None, parse_mode=ParseMode.HTML)
-                media_group.append(media)
-            
-            sent_messages = await bot.send_media_group(chat_id=target, media=media_group)
-            sent = sent_messages[0]
-            
-            try:
-                await bot.edit_message_reply_markup(chat_id=target, message_id=sent.message_id, reply_markup=kb)
-            except TelegramBadRequest as e:
-                if "message is not modified" not in str(e):
-                    raise e
-                    
-        elif len(photos) == 1:
-            p = photos[0]
-            if is_video_file(p):
-                sent = await bot.send_video(chat_id=target, video=p, caption=caption, reply_markup=kb)
+        if media_type == "video" and photos:
+            sent = await bot.send_video(chat_id=target, video=photos[0], caption=caption, reply_markup=kb)
+        elif media_type == "photo" and photos:
+            if len(photos) > 1:
+                media_group = []
+                for i, p in enumerate(photos):
+                    media_group.append(InputMediaPhoto(media=p, caption=caption if i==0 else None, parse_mode=ParseMode.HTML))
+                sent_messages = await bot.send_media_group(chat_id=target, media=media_group)
+                sent = sent_messages[0]
+                try:
+                    await bot.edit_message_reply_markup(chat_id=target, message_id=sent.message_id, reply_markup=kb)
+                except TelegramBadRequest:
+                    pass
             else:
-                sent = await bot.send_photo(chat_id=target, photo=p, caption=caption, reply_markup=kb)
+                sent = await bot.send_photo(chat_id=target, photo=photos[0], caption=caption, reply_markup=kb)
         else:
             sent = await bot.send_message(chat_id=target, text=caption, reply_markup=kb)
         return sent
@@ -542,7 +539,7 @@ async def process_phone(message: Message, state: FSMContext):
 # ASOSIY MENYU
 # =====================================================================
 @router.callback_query(F.data == "menu_back_to_main")
-async def back_to_main(call: CallbackQuery):
+async def back_to_main(call: CallbackQuery, state: FSMContext): # 🔴 state parametri qo'shildi
     await state.clear()
     await safe_edit_text(call.message, Texts.MAIN_MENU, reply_markup=get_main_menu_kb(call.from_user.id in BotConfig.ADMIN_IDS))
 
@@ -593,7 +590,7 @@ async def menu_rating(call: CallbackQuery):
     await safe_edit_text(call.message, text, reply_markup=kb)
 
 # =====================================================================
-# YANGI TO'LOV TIZIMI (TOPUP)
+# TO'LOV TIZIMI (TOPUP)
 # =====================================================================
 @router.callback_query(F.data == "menu_topup")
 async def menu_topup(call: CallbackQuery, state: FSMContext):
@@ -622,7 +619,6 @@ async def topup_admin_amount(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # To'lov so'rovini yaratish (Pending holatida)
     try:
         payment_id = await db.create_payment_request(message.from_user.id, amount, card["id"], str(card["number"])[-4:])
     except Exception as e:
@@ -654,7 +650,6 @@ async def topup_admin_receipt(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # Chekni olish
     if message.photo:
         file_id = message.photo[-1].file_id
     elif message.document and message.document.mime_type.startswith("image/"):
@@ -663,13 +658,9 @@ async def topup_admin_receipt(message: Message, state: FSMContext):
         await message.answer("❌ Iltimos, faqat rasm (chek) yuboring.")
         return
 
-    # Bazaga chekni saqlash
     await db.attach_receipt(payment_id, file_id)
-    
-    # Userga javob
     await message.answer(Texts.TOPUP_ADMIN_RECEIPT_ACCEPTED)
     
-    # Adminga yuborish
     user = await db.get_user(message.from_user.id)
     card = await db.get_active_card()
     
@@ -691,7 +682,6 @@ async def topup_admin_receipt(message: Message, state: FSMContext):
     ])
 
     try:
-        # Texnik Adminga rasm va ma'lumotlarni yuborish
         await bot.send_photo(
             chat_id=BotConfig.TECH_ADMIN_ID,
             photo=file_id,
@@ -700,7 +690,6 @@ async def topup_admin_receipt(message: Message, state: FSMContext):
         )
     except Exception as e:
         logger.error(f"Adminga chek yuborishda xato: {e}")
-        # Agar rasm yuborishda xato bo'lsa, faqat matn yuboramiz
         try:
             await bot.send_message(chat_id=BotConfig.TECH_ADMIN_ID, text=admin_text, reply_markup=kb)
         except Exception as e2:
@@ -724,7 +713,6 @@ async def topup_admin_approve(call: CallbackQuery):
         await safe_answer(call, "❌ To'lov topilmadi yoki allaqachon yopilgan!", show_alert=True)
         return
         
-    # Admin xabarini o'chirish (yoki tahrirlash)
     try:
         await call.message.edit_caption(caption=f"✅ <b>To'lov tasdiqlandi!</b>\nSumma: {payment['amount']:,} so'm", reply_markup=None)
     except Exception:
@@ -733,7 +721,6 @@ async def topup_admin_approve(call: CallbackQuery):
         except:
             pass
 
-    # Userga xabar yuborish
     try:
         await bot.send_message(
             payment["user_id"], 
@@ -751,43 +738,9 @@ async def topup_admin_reject(call: CallbackQuery, state: FSMContext):
         return
         
     payment_id = int(call.data.split("_")[2])
-    
-    # Rad etish sababini so'rash (ixtiyoriy, lekin qulay)
     await state.update_data(reject_payment_id=payment_id)
     await call.message.reply("Rad etish sababini yozing (yoki bekor qilish uchun /cancel bosing):")
     await state.set_state(AdminStates.decline_reason)
-
-@router.message(AdminStates.decline_reason, F.text)
-async def process_payment_reject_reason(message: Message, state: FSMContext):
-    if message.text == "/cancel":
-        await state.clear()
-        await message.answer("Bekor qilindi.")
-        return
-        
-    data = await state.get_data()
-    payment_id = data.get("reject_payment_id")
-    
-    if not payment_id:
-        await message.answer("❌ Xatolik: ID topilmadi.")
-        await state.clear()
-        return
-        
-    payment = await db.reject_payment(payment_id)
-    await state.clear()
-    
-    if not payment:
-        await message.answer("❌ To'lov topilmadi yoki allaqachon yopilgan.")
-        return
-
-    await message.answer("✅ To'lov rad etildi.")
-    
-    try:
-        await bot.send_message(
-            payment["user_id"],
-            Texts.TOPUP_REJECTED
-        )
-    except Exception:
-        pass
 
 # =====================================================================
 # MENING E'LONLARIM
@@ -826,9 +779,10 @@ async def menu_my_orders(call: CallbackQuery):
             try: photos = json.loads(photos)
             except: photos = []
             
+        media_type = ad.get("media_type", "photo") # Media_type bo'yicha aniqlash
+            
         if photos:
-            is_vid = photos[0].lower().endswith((".mp4", ".mov")) or "video" in photos[0].lower()
-            if is_vid:
+            if media_type == "video":
                 await call.message.answer_video(video=photos[0], caption=text, reply_markup=kb)
             else:
                 await call.message.answer_photo(photo=photos[0], caption=text, reply_markup=kb)
@@ -857,7 +811,8 @@ async def user_mark_ad_done(call: CallbackQuery):
             
             new_caption = f"{old_caption}\n\n📍 Manzil: {address}\n📞 Tel: <i>Yashirilgan</i>\n\n✅ <b>E'LON {action_text.upper()}!</b>"
             
-            if ad.get("photos"):
+            # Rasm yoki video bo'lsa captionni tahrirlash, matn bo'lsa textni tahrirlash
+            if ad.get("photos") and len(ad.get("photos")) > 0:
                 await bot.edit_message_caption(chat_id=target_chat, message_id=ad["channel_message_id"], caption=new_caption, reply_markup=None)
             else:
                 await bot.edit_message_text(chat_id=target_chat, message_id=ad["channel_message_id"], text=new_caption, reply_markup=None)
@@ -948,8 +903,8 @@ async def breed_page(call: CallbackQuery):
 
 @router.callback_query(AdStates.choosing_breed, F.data.startswith("breed_") & ~F.data.startswith("breed_page_") & ~F.data.startswith("breed_custom"))
 async def process_breed(call: CallbackQuery, state: FSMContext):
-    parts = call.data.split("_")
-    breed = DataLists.BREEDS[int(parts[1])][int(parts[2])]
+    breed_idx = int(call.data.split("_")[1])
+    breed = DataLists.BREEDS[breed_idx]
     await state.update_data(current_breed=breed)
     data = await state.get_data()
     idx = data.get("current_cat_index", 1)
@@ -973,7 +928,8 @@ async def process_custom_breed(message: Message, state: FSMContext):
 
 @router.callback_query(AdStates.choosing_age, F.data.startswith("age_"))
 async def process_age(call: CallbackQuery, state: FSMContext):
-    age = call.data.replace("age_", "").replace("_", " ")
+    age_idx = int(call.data.split("_")[1])
+    age = DataLists.AGES[age_idx] # Indeks bo'yicha to'g'ri olinadi
     await state.update_data(current_age=age)
     data = await state.get_data()
     idx = data.get("current_cat_index", 1)
@@ -1029,7 +985,9 @@ async def process_sterilization(call: CallbackQuery, state: FSMContext):
 
 @router.callback_query(AdStates.waiting_address, F.data.startswith("viloyat_"))
 async def process_address(call: CallbackQuery, state: FSMContext):
-    await state.update_data(address=call.data.replace("viloyat_", "").replace("_", " ").title())
+    vil_idx = int(call.data.split("_")[1])
+    address = DataLists.VILOYATLAR[vil_idx]
+    await state.update_data(address=address)
     await safe_edit_text(call.message, Texts.AD_PHONE_ASK, reply_markup=None)
     await state.set_state(AdStates.waiting_phone)
 
@@ -1094,10 +1052,11 @@ async def send_ad_preview(message: Message, state: FSMContext):
             caption += "❓ <b>Shuncha summa yechishga tayyormisiz?</b>"
     
     photos = data.get("photos", [])
+    media_type = data.get("media_type", "photo")
     kb = get_preview_kb(user['balance'], price)
     
     if photos:
-        if data.get("media_type") == "video":
+        if media_type == "video":
             await message.answer_video(video=photos[0], caption=caption, reply_markup=kb)
         else:
             await message.answer_photo(photo=photos[0], caption=caption, reply_markup=kb)
@@ -1122,9 +1081,12 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
             await safe_answer(call, "❌ Mablag' yechishda xatolik!", show_alert=True)
             return
 
+    media_type = data.get("media_type", "photo")
+
     new_ad = await db.create_ad(
         user_id=user["id"], ad_type=data.get("ad_type"), tariff="bot",
         photos=data.get("photos", []), cats_data=data.get("cats_data", []),
+        media_type=media_type, # 🔴 MEDIA TURI SAQLANDI
         address=data.get("address"), phone=data.get("phone"), price=data.get("price", "0"),
         currency=data.get("currency", "so'm"), ad_number=(user.get("ad_count") or 0) + 1,
         cat_count=data.get("cat_count", 1), price_paid=price,
@@ -1148,10 +1110,15 @@ async def confirm_ad(call: CallbackQuery, state: FSMContext):
     photos = data.get("photos", [])
     try:
         if photos:
-            if data.get("media_type") == "video":
+            if media_type == "video":
                 await bot.send_video(BotConfig.TECH_ADMIN_ID, video=photos[0], caption=admin_caption, reply_markup=kb)
             else:
-                await bot.send_photo(BotConfig.TECH_ADMIN_ID, photo=photos[0], caption=admin_caption, reply_markup=kb)
+                if len(photos) > 1:
+                    media_group = [InputMediaPhoto(media=p, caption=admin_caption if i==0 else None, parse_mode=ParseMode.HTML) for i, p in enumerate(photos)]
+                    sent = await bot.send_media_group(BotConfig.TECH_ADMIN_ID, media=media_group)
+                    await bot.edit_message_reply_markup(chat_id=BotConfig.TECH_ADMIN_ID, message_id=sent[0].message_id, reply_markup=kb)
+                else:
+                    await bot.send_photo(BotConfig.TECH_ADMIN_ID, photo=photos[0], caption=admin_caption, reply_markup=kb)
         else:
             await bot.send_message(BotConfig.TECH_ADMIN_ID, admin_caption, reply_markup=kb)
     except Exception as e:
@@ -1219,14 +1186,11 @@ async def tech_admin_decline(call: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.decline_reason)
 async def process_decline_reason(message: Message, state: FSMContext):
-    # Bu handler 2 xil holatda ishlaydi: Reklamani rad etish va To'lovni rad etish.
-    # Ikkalasini ham bitta joyda hal qilamiz.
     data = await state.get_data()
     ad_id = data.get("decline_ad_id")
     payment_id = data.get("reject_payment_id")
     
     if ad_id:
-        # Reklamani rad etish
         ad = await db.get_ad(ad_id)
         await db.update_ad_status(ad_id, "rejected", reason=message.text)
         
@@ -1239,7 +1203,6 @@ async def process_decline_reason(message: Message, state: FSMContext):
         await message.answer("✅ Reklama rad etildi va pul qaytarildi.")
         
     elif payment_id:
-        # To'lovni rad etish
         payment = await db.reject_payment(payment_id)
         if payment:
             await bot.send_message(payment["user_id"], Texts.TOPUP_REJECTED)
@@ -1298,10 +1261,10 @@ async def admin_edit_value_save(message: Message, state: FSMContext):
     if isinstance(photos, str): 
         try: photos = json.loads(photos)
         except: photos = []
+    media_type = ad.get("media_type", "photo")
     
     if photos:
-        is_vid = photos[0].lower().endswith((".mp4", ".mov")) or "video" in photos[0].lower()
-        if is_vid:
+        if media_type == "video":
             await message.answer_video(video=photos[0], caption=admin_caption, reply_markup=kb)
         else:
             await message.answer_photo(photo=photos[0], caption=admin_caption, reply_markup=kb)
